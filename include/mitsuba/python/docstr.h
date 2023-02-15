@@ -5552,6 +5552,17 @@ R"doc(Return an array containing names and references for all stored objects
 Parameter ``mark_queried``:
     Whether all stored objects should be marked as queried)doc";
 
+
+static const char *__doc_mitsuba_Properties_animated_transform = R"doc(Retrieve an arbitrary animated_transform)doc";
+
+static const char *__doc_mitsuba_Properties_animated_transform_2 = R"doc(Retrieve an arbitrary animated_transform (use default value if no entry exists))doc";
+
+static const char *__doc_mitsuba_Properties_animated_transforms =
+R"doc(Return an array containing names and references for all stored animated_transform s
+
+Parameter ``mark_queried``:
+    Whether all stored animated_transform s should be marked as queried)doc";
+
 static const char *__doc_mitsuba_Properties_operator_assign = R"doc(Assignment operator)doc";
 
 static const char *__doc_mitsuba_Properties_operator_eq = R"doc(Equality comparison operator)doc";
@@ -5599,6 +5610,10 @@ static const char *__doc_mitsuba_Properties_set_string = R"doc(Store a string in
 static const char *__doc_mitsuba_Properties_set_transform =
 R"doc(Store a 4x4 homogeneous coordinate transformation in the Properties
 instance)doc";
+
+static const char *__doc_mitsuba_Properties_set_animated_transform =
+R"doc(Store an Animated Transform)doc";
+
 
 static const char *__doc_mitsuba_Properties_string = R"doc(Retrieve a string value)doc";
 
@@ -9083,6 +9098,17 @@ static const char *__doc_mitsuba_Transform_transform_affine_3 = R"doc(Transform 
 static const char *__doc_mitsuba_Transform_translate = R"doc(Create a translation transformation)doc";
 
 static const char *__doc_mitsuba_Transform_translation = R"doc(Get the translation part of a matrix)doc";
+
+static const char *__doc_mitsuba_AnimatedTransform = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_translation_bounds = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_eval = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_append = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_has_scale = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_size = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_Keyframe_trans = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_Keyframe_quat = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_Keyframe_scale = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_Keyframe_time = R"doc(animated_transform temp)doc";
 
 static const char *__doc_mitsuba_TransportMode =
 R"doc(Specifies the transport mode when sampling or evaluating a scattering

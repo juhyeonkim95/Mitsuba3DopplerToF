@@ -20,8 +20,13 @@
 NAMESPACE_BEGIN(mitsuba)
 
 MI_VARIANT Shape<Float, Spectrum>::Shape(const Properties &props) : m_id(props.id()) {
-    m_to_world =
-        (ScalarTransform4f) props.get<ScalarTransform4f>("to_world", ScalarTransform4f());
+    try{
+        m_to_world =
+            (ScalarTransform4f) props.get<ScalarTransform4f>("to_world", ScalarTransform4f());
+    } catch(...){
+        m_to_world = ScalarTransform4f();
+    }
+    
     m_to_object = m_to_world.scalar().inverse();
 
     for (auto &[name, obj] : props.objects(false)) {

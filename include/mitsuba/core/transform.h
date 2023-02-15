@@ -370,7 +370,7 @@ template <typename Point_> struct Transform {
 
 // WARNING: the AnimatedTransform class is outdated and dysfunctional with the
 // latest version of Mitsuba 3. Please update this code before using it!
-#if 0
+
 /**
  * \brief Encapsulates an animated 4x4 homogeneous coordinate transformation
  *
@@ -537,7 +537,7 @@ private:
     Transform4f m_transform;
     std::vector<Keyframe> m_keyframes;
 };
-#endif
+
 
 // -----------------------------------------------------------------------
 //! @{ \name Printing

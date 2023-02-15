@@ -38,7 +38,7 @@ NAMESPACE_BEGIN(xml)
 // Set of supported XML tags
 enum class Tag {
     Boolean, Integer, Float, String, Point, Vector, Spectrum, RGB,
-    Transform, Translate, Matrix, Rotate, Scale, LookAt, Object,
+    Transform, Animation, Translate, Matrix, Rotate, Scale, LookAt, Object,
     NamedReference, Include, Alias, Default, Resource, Invalid
 };
 
@@ -128,6 +128,7 @@ void register_class(const Class *class_) {
         (*tags)["point"]         = Tag::Point;
         (*tags)["vector"]        = Tag::Vector;
         (*tags)["transform"]     = Tag::Transform;
+        (*tags)["animation"]     = Tag::Animation;
         (*tags)["translate"]     = Tag::Translate;
         (*tags)["matrix"]        = Tag::Matrix;
         (*tags)["rotate"]        = Tag::Rotate;
@@ -248,6 +249,8 @@ ColorMode variant_to_color_mode() {
 struct XMLParseContext {
     std::unordered_map<std::string, XMLObject> instances;
     Transform4f transform;
+    Float transform_time;
+    ref<AnimatedTransform> animatedTransform;
     size_t id_counter = 0;
     ColorMode color_mode;
     std::string variant;
@@ -472,6 +475,8 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
         bool parent_is_object        = has_parent && parent_tag == Tag::Object;
         bool current_is_object       = tag == Tag::Object;
         bool parent_is_transform     = parent_tag == Tag::Transform;
+        bool current_is_transform    = tag == Tag::Transform;
+        bool parent_is_animation     = parent_tag == Tag::Animation;
         bool current_is_transform_op = tag == Tag::Translate || tag == Tag::Rotate ||
                                        tag == Tag::Scale || tag == Tag::LookAt ||
                                        tag == Tag::Matrix;
@@ -486,7 +491,7 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
                 src.throw_error(node, "transform operations can only occur in a transform node");
         }
 
-        if (has_parent && !parent_is_object && !(parent_is_transform && current_is_transform_op))
+        if (has_parent && !parent_is_object && !((parent_is_transform && current_is_transform_op) || (parent_is_animation && current_is_transform)))
             src.throw_error(node, "node \"%s\" cannot occur as child of a property", node.name());
 
         auto version_attr = node.attribute("version");
@@ -507,8 +512,10 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
 
         if (std::string(node.name()) == "scene") {
             node.append_attribute("type") = "scene";
-        } else if (tag == Tag::Transform) {
+        } else if (tag == Tag::Transform && !(ctx.animatedTransform.get())) {
             ctx.transform = Transform4f();
+        } else if (tag == Tag::Animation){
+            ctx.animatedTransform = new AnimatedTransform();
         }
 
         if (node.attribute("name")) {
@@ -861,11 +868,25 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
                 break;
 
             case Tag::Transform: {
-                    check_attributes(src, node, { "name" });
-                    ctx.transform = Transform4f();
+                    if(!ctx.animatedTransform.get()){
+                        check_attributes(src, node, { "name"});
+                        ctx.transform = Transform4f();
+                    } else {
+                        check_attributes(src, node, { "time" });
+                        ctx.transform = Transform4f();
+                        std::string time = node.attribute("time").value();
+                        Float time_float = string::stof<Float>(time);
+                        ctx.transform_time = time_float;
+                        // ctx.animatedTransform->append(time_float, ctx.transform);
+                    }
                 }
                 break;
-
+            case Tag::Animation: {
+                    check_attributes(src, node, { "name" });
+                    ctx.animatedTransform = new AnimatedTransform();
+                }
+                break;
+                
             case Tag::Rotate: {
                     detail::expand_value_to_xyz(src, node);
                     check_attributes(src, node, { "angle", "x", "y", "z" }, false);
@@ -959,9 +980,21 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
 
         for (pugi::xml_node &ch: node.children())
             parse_xml(src, ctx, ch, tag, props, param, arg_counter, depth + 1);
+        
+        if(tag == Tag::Transform){
+            if(ctx.animatedTransform.get()){
+                ctx.animatedTransform->append(ctx.transform_time, ctx.transform);
+            } else {
+                props.set_transform(node.attribute("name").value(), ctx.transform);
+            }
+        }
 
-        if (tag == Tag::Transform)
-            props.set_transform(node.attribute("name").value(), ctx.transform);
+        if (tag == Tag::Animation){
+            props.set_animated_transform(node.attribute("name").value(), ctx.animatedTransform);
+            ctx.animatedTransform = NULL;
+        }
+            
+
     } catch (const std::exception &e) {
         if (strstr(e.what(), "Error while loading") == nullptr)
             src.throw_error(node, "%s", e.what());
@@ -1095,7 +1128,57 @@ static Task *instantiate_node(XMLParseContext &ctx,
         }
 
         try {
-            inst.object = PluginManager::instance()->create_object(props, inst.class_);
+            if((strcmp(string::to_lower(inst.class_->name()).c_str(), "shape") == 0) 
+            && props.has_property("to_world")
+            && props.type("to_world") != Properties::Type::Transform
+            ){
+                ref<AnimatedTransform> trafo = props.animated_transform("to_world");
+                props.remove_property("to_world");
+                inst.object = PluginManager::instance()->create_object(props, inst.class_);
+                
+                Properties shapeGroupProp("shapegroup");
+                shapeGroupProp.set_object("shape", inst.object);
+
+                auto shape_group = PluginManager::instance()->create_object(shapeGroupProp, inst.class_);
+
+                Properties instanceProp("instance");
+                instanceProp.set_object("shapegroup", shape_group);
+                std::cout << trafo->to_string() << std::endl;
+                instanceProp.set_animated_transform("to_world", trafo);
+                // instanceProp.set_transform("to_world", trafo->eval(0.0));
+                auto instanced_shape = PluginManager::instance()->create_object(instanceProp, inst.class_);
+                inst.object = instanced_shape;
+
+                // props.set_transform("to_world", Transfrom4f());
+                // props.set_plugin_name("instance");
+                // props.set_object("shapegroup", )
+                // const Properties shapeGroupProp("shapegroup");
+                // auto shapeGroup = PluginManager::instance()->create_object(shapeGroupProp, inst.class_);
+                // shapeGroup->expand().push_back();
+                
+                // const Properties instanceProp("instance");
+                // inst.object = PluginManager::instance()->create_object(instanceProp, inst.class_);
+                // inst.object->expand().push_back
+
+                // inst.object = PluginManager::instance()->create_object<Shape>(instanceProp);
+
+                //ref<Object> animated_transform = props.get<ref<Object>>("to_world");
+                //ref<Shape> shape_group = PluginManager::instance()->create_object(Properties("shapegroup"), MI_CLASS(Shape));
+
+                // switch(props.type("to_world")){
+                //     case Properties::Type::Transform:
+                //         std::cout << "Transform" << std::endl;
+                //         break;
+                //     case Properties::Type::AnimatedTransform:
+                //         std::cout << "AnimatedTransform" << std::endl;
+                //         break;
+                //     default:
+                //         std::cout << "Others" << std::endl;
+                //         break;
+                // }
+            } else {
+                inst.object = PluginManager::instance()->create_object(props, inst.class_);
+            }
             #if defined(MI_ENABLE_CUDA) || defined(MI_ENABLE_LLVM)
                 if (ctx.is_jit()) {
                     // Ensures dr::scatter occurring in object constructors are flushed

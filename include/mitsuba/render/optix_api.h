@@ -90,6 +90,39 @@ struct OptixMotionOptions {
     float timeEnd;
 };
 
+struct OptixMatrixMotionTransform
+{
+    OptixTraversableHandle child;
+ 
+    OptixMotionOptions motionOptions;
+ 
+    unsigned int pad[3];
+ 
+    float transform[2][12];
+};
+
+//      [ sx   a   b  pvx ]
+//  S = [  0  sy   c  pvy ]
+//      [  0   0  sz  pvz ]
+//      [  1  0  0 tx ]
+//  T = [  0  1  0 ty ]
+//      [  0  0  1 tz ]
+struct OptixSRTData
+{
+    float sx, a, b, pvx, sy, c, pvy, sz, pvz, qx, qy, qz, qw, tx, ty, tz;
+};
+
+struct OptixSRTMotionTransform
+{
+    OptixTraversableHandle child;
+ 
+    OptixMotionOptions motionOptions;
+ 
+    unsigned int pad[3];
+ 
+    OptixSRTData srtData[2];
+};
+
 struct OptixAccelBuildOptions {
     unsigned int buildFlags;
     OptixBuildOperation operation;

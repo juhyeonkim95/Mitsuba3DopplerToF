@@ -59,6 +59,10 @@ public:
     using ShapeGroup_ = ShapeGroup<Float, Spectrum>;
 
     Instance(const Properties &props) : Base(props) {
+        m_transform = props.animated_transform("to_world");
+        std::cout << "Instance Animation Transform " << m_transform.get()->to_string() << std::endl;
+
+        // .get<ScalarTransform4f>("to_world", ScalarTransform4f());
         for (auto &kv : props.objects()) {
             Base *shape = dynamic_cast<Base *>(kv.second.get());
             if (shape && shape->is_shapegroup()) {
@@ -66,7 +70,7 @@ public:
                     Throw("Only a single shapegroup can be specified per instance.");
                 m_shapegroup = (ShapeGroup_*) shape;
             } else {
-                Throw("Only a shapegroup can be specified in an instance.");
+                // Throw("Only a shapegroup can be specified in an instance.");
             }
         }
 
@@ -236,6 +240,7 @@ public:
     MI_DECLARE_CLASS()
 private:
    ref<ShapeGroup_> m_shapegroup;
+   ref<const AnimatedTransform> m_transform;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(Instance, Shape)
