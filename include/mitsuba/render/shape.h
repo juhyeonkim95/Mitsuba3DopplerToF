@@ -501,6 +501,9 @@ public:
                                    const ScalarTransform4f& /*transf*/,
                                    const ref<AnimatedTransform>& /*animated_transf*/);
 
+    virtual void* get_shapegroup();
+    virtual SurfaceInteraction3f adjust_time(const SurfaceInteraction3f &si, Float time, Mask active = true) const;
+
     /**
      * \brief Creates and appends the HitGroupSbtRecord(s) associated with this
      * shape to the provided array.
@@ -650,6 +653,7 @@ DRJIT_VCALL_TEMPLATE_BEGIN(mitsuba::Shape)
     DRJIT_VCALL_METHOD(ray_intersect)
     DRJIT_VCALL_METHOD(ray_test)
     DRJIT_VCALL_METHOD(sample_position)
+    DRJIT_VCALL_METHOD(adjust_time)
     DRJIT_VCALL_GETTER(emitter, const typename Class::Emitter *)
     DRJIT_VCALL_GETTER(sensor, const typename Class::Sensor *)
     DRJIT_VCALL_GETTER(bsdf, const typename Class::BSDF *)
@@ -659,6 +663,7 @@ DRJIT_VCALL_TEMPLATE_BEGIN(mitsuba::Shape)
     auto is_sensor() const { return neq(sensor(), nullptr); }
     auto is_medium_transition() const { return neq(interior_medium(), nullptr) ||
                                                neq(exterior_medium(), nullptr); }
+
 DRJIT_VCALL_TEMPLATE_END(mitsuba::Shape)
 
 //! @}

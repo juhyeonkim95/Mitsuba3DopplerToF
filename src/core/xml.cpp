@@ -877,6 +877,7 @@ static std::pair<std::string, std::string> parse_xml(XMLSource &src, XMLParseCon
                         std::string time = node.attribute("time").value();
                         Float time_float = string::stof<Float>(time);
                         ctx.transform_time = time_float;
+                        // ctx.animatedTransform->append(time_float, ctx.transform);
                     }
                 }
                 break;
@@ -1127,60 +1128,33 @@ static Task *instantiate_node(XMLParseContext &ctx,
         }
 
         try {
+            /* Convenience hack (from Mitsuba 0.5): allow passing animated transforms to arbitrary shapes
+                and then internally rewrite this into a shape group + animated instance */
             if((strcmp(string::to_lower(inst.class_->name()).c_str(), "shape") == 0)
             && (strcmp(props.plugin_name().c_str(), "instance") != 0)
             && props.has_property("to_world")
             && props.type("to_world") != Properties::Type::Transform
             ){
+                // remove to_world animated transform
                 ref<AnimatedTransform> trafo = props.animated_transform("to_world");
                 std::string props_id = props.id();
                 props.remove_property("to_world");
                 props.set_id(tfm::format("_unnamed_%i", ctx.id_counter++).c_str());
-                
-                // props.set_transform("to_world", trafo->eval(0.0));
                 inst.object = PluginManager::instance()->create_object(props, inst.class_);
                 
+                // create shape group
                 Properties shapeGroupProp("shapegroup");
                 shapeGroupProp.set_object("shape", inst.object);
                 shapeGroupProp.set_id(props_id);
-
                 auto shape_group = PluginManager::instance()->create_object(shapeGroupProp, inst.class_);
 
+                // create instance
                 Properties instanceProp("instance");
-                instanceProp.set_named_reference("shapegroup", props_id);
-                //instanceProp.set_object("shapegroup", shape_group);
+                instanceProp.set_object("shapegroup", shape_group);
                 instanceProp.set_animated_transform("to_world", trafo);
                 auto instanced_shape = PluginManager::instance()->create_object(instanceProp, inst.class_);
                 inst.object = instanced_shape;
 
-                std::cout << "Shape to instance!" << std::endl;
-                // props.set_transform("to_world", Transfrom4f());
-                // props.set_plugin_name("instance");
-                // props.set_object("shapegroup", )
-                // const Properties shapeGroupProp("shapegroup");
-                // auto shapeGroup = PluginManager::instance()->create_object(shapeGroupProp, inst.class_);
-                // shapeGroup->expand().push_back();
-                
-                // const Properties instanceProp("instance");
-                // inst.object = PluginManager::instance()->create_object(instanceProp, inst.class_);
-                // inst.object->expand().push_back
-
-                // inst.object = PluginManager::instance()->create_object<Shape>(instanceProp);
-
-                //ref<Object> animated_transform = props.get<ref<Object>>("to_world");
-                //ref<Shape> shape_group = PluginManager::instance()->create_object(Properties("shapegroup"), MI_CLASS(Shape));
-
-                // switch(props.type("to_world")){
-                //     case Properties::Type::Transform:
-                //         std::cout << "Transform" << std::endl;
-                //         break;
-                //     case Properties::Type::AnimatedTransform:
-                //         std::cout << "AnimatedTransform" << std::endl;
-                //         break;
-                //     default:
-                //         std::cout << "Others" << std::endl;
-                //         break;
-                // }
             } else {
                 inst.object = PluginManager::instance()->create_object(props, inst.class_);
             }

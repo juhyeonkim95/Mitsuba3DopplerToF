@@ -147,7 +147,7 @@ public:
                 scene->ray_intersect(ray,
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
-
+            
             // ---------------------- Direct emission ----------------------
 
             /* dr::any_or() checks for active entries in the provided boolean

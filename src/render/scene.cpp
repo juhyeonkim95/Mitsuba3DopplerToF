@@ -57,6 +57,15 @@ MI_VARIANT Scene<Float, Spectrum>::Scene(const Properties &props) {
         }
     }
 
+    for(auto shape : m_shapes){
+        if(shape->is_instance()){
+            if(std::find(m_shapegroups.begin(), m_shapegroups.end(), (ShapeGroup*) shape->get_shapegroup()) == m_shapegroups.end()){
+                std::cout << "Not found! " << std::endl;
+                m_shapegroups.push_back((ShapeGroup*) shape->get_shapegroup());
+            }
+        }
+    }
+
     // Create sensors' shapes (environment sensors)
     for (Sensor *sensor: m_sensors)
         sensor->set_scene(this);

@@ -355,6 +355,18 @@ MI_VARIANT void Shape<Float, Spectrum>::optix_build_input(OptixBuildInput &build
 }
 #endif
 
+MI_VARIANT void* Shape<Float, Spectrum>::get_shapegroup() {
+    NotImplementedError("optix_prepare_ias");
+}
+
+MI_VARIANT typename Shape<Float, Spectrum>::SurfaceInteraction3f
+Shape<Float, Spectrum>::adjust_time(const SurfaceInteraction3f &si, Float time, Mask active) const{
+    MI_MASK_ARGUMENT(active);
+    SurfaceInteraction3f new_si = si;
+    new_si.time = time;
+    return new_si;
+}
+
 MI_VARIANT typename Shape<Float, Spectrum>::DirectionSample3f
 Shape<Float, Spectrum>::sample_direction(const Interaction3f &it,
                                          const Point2f &sample,

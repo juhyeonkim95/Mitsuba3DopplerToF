@@ -8,89 +8,45 @@
 
 NAMESPACE_BEGIN(mitsuba)
 
-/**!
-
-.. _integrator-path:
-
-Path tracer (:monosp:`path`)
-----------------------------
-
-.. pluginparameters::
-
- * - max_depth
-   - |int|
-   - Specifies the longest path depth in the generated output image (where -1
-     corresponds to :math:`\infty`). A value of 1 will only render directly
-     visible light sources. 2 will lead to single-bounce (direct-only)
-     illumination, and so on. (Default: -1)
-
- * - rr_depth
-   - |int|
-   - Specifies the path depth, at which the implementation will begin to use
-     the *russian roulette* path termination criterion. For example, if set to
-     1, then path generation many randomly cease after encountering directly
-     visible surfaces. (Default: 5)
-
- * - hide_emitters
-   - |bool|
-   - Hide directly visible emitters. (Default: no, i.e. |false|)
-
-This integrator implements a basic path tracer and is a **good default choice**
-when there is no strong reason to prefer another method.
-
-To use the path tracer appropriately, it is instructive to know roughly how
-it works: its main operation is to trace many light paths using *random walks*
-starting from the sensor. A single random walk is shown below, which entails
-casting a ray associated with a pixel in the output image and searching for
-the first visible intersection. A new direction is then chosen at the intersection,
-and the ray-casting step repeats over and over again (until one of several
-stopping criteria applies).
-
-.. image:: ../../resources/data/docs/images/integrator/integrator_path_figure.png
-    :width: 95%
-    :align: center
-
-At every intersection, the path tracer tries to create a connection to
-the light source in an attempt to find a *complete* path along which
-light can flow from the emitter to the sensor. This of course only works
-when there is no occluding object between the intersection and the emitter.
-
-This directly translates into a category of scenes where a path tracer can be
-expected to produce reasonable results: this is the case when the emitters are
-easily "accessible" by the contents of the scene. For instance, an interior
-scene that is lit by an area light will be considerably harder to render when
-this area light is inside a glass enclosure (which effectively counts as an
-occluder).
-
-Like the :ref:`direct <integrator-direct>` plugin, the path tracer internally
-relies on multiple importance sampling to combine BSDF and emitter samples. The
-main difference in comparison to the former plugin is that it considers light
-paths of arbitrary length to compute both direct and indirect illumination.
-
-.. note:: This integrator does not handle participating media
-
-.. tabs::
-    .. code-tab::  xml
-        :name: path-integrator
-
-        <integrator type="path">
-            <integer name="max_depth" value="8"/>
-        </integrator>
-
-    .. code-tab:: python
-
-        'type': 'path',
-        'max_depth': 8
-
- */
-
 template <typename Float, typename Spectrum>
-class PathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
+class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
+protected:
+    enum class PathLenghImportanceFunctionType{
+        Rect,
+        Step
+    };
 public:
     MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    PathIntegrator(const Properties &props) : Base(props) { }
+
+    DopplerPathIntegrator(const Properties &props) : Base(props) {
+        m_tau_ps = props.get<ScalarFloat>("tau", 0.0f);
+        m_delta_tau_ps = props.get<ScalarFloat>("delta_tau", 0.0f);
+        std::string path_length_importance_function_type = props.get<std::string>("path_length_importance_function_type", "rect");
+
+        if(strcmp(path_length_importance_function_type.c_str(), "rect") == 0){
+            m_path_length_importance_function_type = PathLenghImportanceFunctionType::Rect;
+        }
+        if(strcmp(path_length_importance_function_type.c_str(), "step") == 0){
+            m_path_length_importance_function_type = PathLenghImportanceFunctionType::Step;
+        }
+    }
+
+    Float evalPathLengthImportance(Float path_length) const
+    {
+        // return path_length;
+        Float path_time_ps = path_length * 3333.333;    //(1e12 / 3e8);
+        
+        if(m_path_length_importance_function_type == PathLenghImportanceFunctionType::Step)
+        {
+            return path_time_ps < m_tau_ps; //dr::select( path_time_ps < m_tau_ps, 1, 0);
+        }
+        if(m_path_length_importance_function_type == PathLenghImportanceFunctionType::Rect)
+        {
+            return dr::abs(path_time_ps - m_tau_ps) < 0.5 * m_delta_tau_ps; //dr::select( dr::abs(path_time_ps - m_tau_ps) < 0.5 * m_delta_tau_ps, 1, 0);
+        }
+    }
 
     std::pair<Spectrum, Bool> sample(const Scene *scene,
                                      Sampler *sampler,
@@ -108,6 +64,7 @@ public:
         Ray3f ray                     = Ray3f(ray_);
         Spectrum throughput           = 1.f;
         Spectrum result               = 0.f;
+        Float path_length             = 0.f;
         Float eta                     = 1.f;
         UInt32 depth                  = 0;
 
@@ -119,6 +76,18 @@ public:
         Float         prev_bsdf_pdf   = 1.f;
         Bool          prev_bsdf_delta = true;
         BSDFContext   bsdf_ctx;
+        
+
+        Ray3f ray2 = Ray3f(ray_);
+        Float T = 0.015;
+        ray2.time = dr::select(ray.time < T * 0.5, ray.time + T * 0.5, ray.time - T * 0.5);
+        Float path_length2 = 0;
+        Spectrum throughput2           = 1.f;
+
+        Interaction3f prev_si2         = dr::zeros<Interaction3f>();
+        Float         prev_bsdf_pdf2   = 1.f;
+        Bool          prev_bsdf_delta2 = true;
+
 
         /* Set up a Dr.Jit loop. This optimizes away to a normal loop in scalar
            mode, and it generates either a a megakernel (default) or
@@ -130,15 +99,15 @@ public:
            debugging. The subsequent list registers all variables that encode
            the loop state variables. This is crucial: omitting a variable may
            lead to undefined behavior. */
-        dr::Loop<Bool> loop("Path Tracer", sampler, ray, throughput, result,
+        dr::Loop<Bool> loop("Time Gated Path Tracer", sampler, ray, throughput, result,
                             eta, depth, valid_ray, prev_si, prev_bsdf_pdf,
-                            prev_bsdf_delta, active);
+                            prev_bsdf_delta, active, path_length, ray2, throughput2, path_length2, prev_si2, prev_bsdf_pdf2, prev_bsdf_delta2);
 
         /* Inform the loop about the maximum number of loop iterations.
            This accelerates wavefront-style rendering by avoiding costly
            synchronization points that check the 'active' flag. */
         loop.set_max_iterations(m_max_depth);
-
+        
         while (loop(active)) {
             /* dr::Loop implicitly masks all code in the loop using the 'active'
                flag, so there is no need to pass it to every function */
@@ -147,7 +116,18 @@ public:
                 scene->ray_intersect(ray,
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
-            si = si.adjust_time(0.0);
+
+            SurfaceInteraction3f si2 =
+            scene->ray_intersect(ray2,
+                                    /* ray_flags = */ +RayFlags::All,
+                                    /* coherent = */ dr::eq(depth, 0u));
+
+
+            //SurfaceInteraction3f si2 = si.adjust_time(ray2.time);
+            //si2.t = (prev_si2.p - si2.p).length();
+
+            dr::masked(path_length, si.is_valid()) += si.t;
+            dr::masked(path_length2, si2.is_valid()) += si2.t;
 
             // ---------------------- Direct emission ----------------------
 
@@ -166,11 +146,31 @@ public:
 
                 // Compute MIS weight for emitter sample from previous bounce
                 Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
+                
+                Float length_weight = evalPathLengthImportance(path_length);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result = spec_fma(
                     throughput,
-                    ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf,
+                    ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf * length_weight,
+                    result);
+                
+                DirectionSample3f ds2(scene, si2, prev_si2);
+                Float em_pdf2 = 0.f;
+
+                if (dr::any_or<true>(!prev_bsdf_delta2))
+                    em_pdf2 = scene->pdf_emitter_direction(prev_si2, ds2,
+                                                          !prev_bsdf_delta2);
+
+                // Compute MIS weight for emitter sample from previous bounce
+                Float mis_bsdf2 = mis_weight(prev_bsdf_pdf2, em_pdf2);
+                
+                Float length_weight2 = evalPathLengthImportance(path_length2);
+
+                // Accumulate, being careful with polarization (see spec_fma)
+                result = spec_fma(
+                    throughput2,
+                    ds2.emitter->eval(si, prev_bsdf_pdf2 > 0.f) * mis_bsdf2 * length_weight2,
                     result);
             }
 
@@ -210,9 +210,14 @@ public:
                 Float mis_em =
                     dr::select(ds.delta, 1.f, mis_weight(ds.pdf, bsdf_pdf));
 
+                // compute path length
+                Float em_path_length = path_length + ds.dist;
+                
+                Float length_weight = evalPathLengthImportance(em_path_length);
+
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(
-                    throughput, bsdf_val * em_weight * mis_em, result);
+                    throughput, bsdf_val * em_weight * mis_em * length_weight, result);
             }
 
             // ---------------------- BSDF sampling ----------------------
@@ -242,10 +247,16 @@ public:
 
             // ------ Update loop variables based on current interaction ------
 
+            
             throughput *= bsdf_weight;
             eta *= bsdf_sample.eta;
             valid_ray |= active && si.is_valid() &&
                          !has_flag(bsdf_sample.sampled_type, BSDFFlags::Null);
+
+
+
+
+
 
             // Information about the current vertex needed by the next iteration
             prev_si = si;
@@ -281,10 +292,11 @@ public:
     // =============================================================
 
     std::string to_string() const override {
-        return tfm::format("PathIntegrator[\n"
+        return tfm::format("DopplerPathIntegrator[\n"
             "  max_depth = %u,\n"
             "  rr_depth = %u\n"
-            "]", m_max_depth, m_rr_depth);
+            "  tau = %f\n"
+            "]", m_max_depth, m_rr_depth, m_tau_ps);
     }
 
     /// Compute a multiple importance sampling weight using the power heuristic
@@ -306,10 +318,14 @@ public:
         else
             return dr::fmadd(a, b, c);
     }
-
     MI_DECLARE_CLASS()
+private:
+    ScalarFloat m_tau_ps;
+    PathLenghImportanceFunctionType m_path_length_importance_function_type;
+    ScalarFloat m_delta_tau_ps;
+
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(PathIntegrator, MonteCarloIntegrator)
-MI_EXPORT_PLUGIN(PathIntegrator, "Path Tracer integrator");
+MI_IMPLEMENT_CLASS_VARIANT(DopplerPathIntegrator, MonteCarloIntegrator)
+MI_EXPORT_PLUGIN(DopplerPathIntegrator, "Doppler Path Tracer integrator");
 NAMESPACE_END(mitsuba)

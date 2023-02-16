@@ -123,6 +123,7 @@ struct SurfaceInteraction : Interaction<Float_, Spectrum_> {
 
     using Index            = typename CoreAliases::UInt32;
     using PositionSample3f = typename RenderAliases::PositionSample3f;
+    using SurfaceInteraction3f = SurfaceInteraction<Float, Spectrum>;
 
     //! @}
     // =============================================================
@@ -394,6 +395,22 @@ struct SurfaceInteraction : Interaction<Float_, Spectrum_> {
             return dr::width(dn_du) > 0 || dr::width(dn_dv) > 0;
         else
             return dr::any_nested(dr::neq(dn_du, 0.f) || dr::neq(dn_dv, 0.f));
+    }
+
+    SurfaceInteraction3f adjust_time(Float time) {
+        ShapePtr target = dr::select(dr::eq(instance, nullptr), shape, instance);
+        SurfaceInteraction3f si = target->adjust_time(*this, time);
+        return si;
+
+        // if(instance != nullptr)
+        //     return instance->adjust_time(*this, time);
+        // else if(shape != nullptr)
+        //     return shape->adjust_time(*this, time);
+        // else{
+        //     SurfaceInteraction3f si = *this;
+        //     si.time = time;
+        //     return si;
+        // }
     }
 
     //! @}

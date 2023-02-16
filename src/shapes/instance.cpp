@@ -60,8 +60,6 @@ public:
 
     Instance(const Properties &props) : Base(props) {
         m_transform = props.animated_transform("to_world");
-        //m_to_world = (ScalarTransform4f) m_transform->eval(0.0);
-        //m_to_object = m_to_world.scalar().inverse();
 
         std::cout << "Instance Animation Transform: \n " << m_transform.get()->to_string() << std::endl;
 
@@ -107,8 +105,8 @@ public:
 
         ScalarBoundingBox3f result;
         for (int i = 0; i < 8; ++i){
-            result.expand(m_transform->eval(0.0)* bbox.corner(i));
-            result.expand(m_transform->eval(1.0)* bbox.corner(i));
+            result.expand(m_transform->eval(m_transform->get_min_time())* bbox.corner(i));
+            result.expand(m_transform->eval(m_transform->get_max_time())* bbox.corner(i));
         }
         return result;
     }
@@ -203,8 +201,34 @@ public:
         return si;
     }
 
-    ref<ShapeGroup_> get_shapegroup(){
-        return m_shapegroup;
+    void* get_shapegroup() override{
+        return m_shapegroup.get();
+    }
+
+    SurfaceInteraction3f adjust_time(const SurfaceInteraction3f &si, Float time, Mask active) const override{
+        MI_MASK_ARGUMENT(active);
+        SurfaceInteraction3f new_si = si;
+
+        // new_si.time = time;
+        // return new_si;
+        
+
+        // std::cout << "CALLED!!!!!!!" << std::endl;
+        
+        Transform4f trafo = m_transform->eval(si.time).inverse();
+        trafo = m_transform->eval(time) * trafo;
+        new_si.dp_du = trafo.transform_affine(si.dp_du);
+        new_si.dp_dv = trafo.transform_affine(si.dp_dv);
+        new_si.p = trafo.transform_affine(si.p);
+        new_si.n = dr::normalize(trafo.transform_affine(si.n));
+
+        new_si.sh_frame.n = dr::normalize(trafo.transform_affine(si.sh_frame.n));
+        new_si.initialize_sh_frame();
+        new_si.wi = dr::normalize(trafo.transform_affine(si.wi));
+        new_si.instance = this;
+        new_si.time = time;
+
+        return new_si;
     }
 
     //! @}
@@ -225,10 +249,10 @@ public:
         if constexpr (!dr::is_cuda_v<Float>) {
             RTCGeometry instance = m_shapegroup->embree_geometry(device);
             rtcSetGeometryTimeStepCount(instance, 2);
-            rtcSetGeometryTimeRange(instance, 0, 1);
-            dr::Matrix<ScalarFloat32, 4> matrix0(m_transform->eval(0.0).matrix);
+            rtcSetGeometryTimeRange(instance, m_transform->get_min_time(), m_transform->get_max_time());
+            dr::Matrix<ScalarFloat32, 4> matrix0(m_transform->eval(m_transform->get_min_time()).matrix);
             rtcSetGeometryTransform(instance, 0, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, &matrix0);
-            dr::Matrix<ScalarFloat32, 4> matrix1(m_transform->eval(1.0).matrix);
+            dr::Matrix<ScalarFloat32, 4> matrix1(m_transform->eval(m_transform->get_max_time()).matrix);
             rtcSetGeometryTransform(instance, 1, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, &matrix1);
             rtcCommitGeometry(instance);
             return instance;

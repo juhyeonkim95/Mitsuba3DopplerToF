@@ -415,11 +415,11 @@ public:
     /// Create an empty animated transform
     AnimatedTransform() = default;
 
-//     /** Create a constant "animated" transform.
-//      * The provided transformation will be used as long as no keyframes
-//      * are specified. However, it will be overwritten as soon as the
-//      * first keyframe is appended.
-//      */
+    /** Create a constant "animated" transform.
+     * The provided transformation will be used as long as no keyframes
+     * are specified. However, it will be overwritten as soon as the
+     * first keyframe is appended.
+     */
     AnimatedTransform(const Transform4f &trafo)
       : m_transform(trafo) { }
 
@@ -492,6 +492,28 @@ public:
 
     /// Return the number of keyframes
     size_t size() const { return m_keyframes.size(); }
+
+    /// Return min time
+    Float get_min_time() const {
+        Float min_time = 100;
+        for (size_t i = 0; i < m_keyframes.size(); ++i) {
+            if (m_keyframes[i].time < min_time){
+                min_time = m_keyframes[i].time;
+            }
+        }
+        return min_time;
+    }
+
+    /// Return max time
+    Float get_max_time() const {
+        Float max_time = -100;
+        for (size_t i = 0; i < m_keyframes.size(); ++i) {
+            if (m_keyframes[i].time > max_time){
+                max_time = m_keyframes[i].time;
+            }
+        }
+        return max_time;
+    }
 
     /// Return a Keyframe data structure
     const Keyframe &operator[](size_t i) const { return m_keyframes[i]; }
