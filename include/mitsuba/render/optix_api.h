@@ -50,6 +50,8 @@ using OptixDenoiserStructPtr = void*;
 #define OPTIX_COMPILE_OPTIMIZATION_LEVEL_0       0x2340
 #define OPTIX_COMPILE_DEBUG_LEVEL_NONE           0x2350
 #define OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL        0x2351
+#define OPTIX_COMPILE_DEBUG_LEVEL_MODERATE       0x2353
+#define OPTIX_COMPILE_DEBUG_LEVEL_FULL           0x2352
 
 #define OPTIX_BUILD_FLAG_NONE 0
 #define OPTIX_BUILD_FLAG_ALLOW_UPDATE 1
@@ -353,12 +355,10 @@ D(optixModuleCreateFromPTXWithTasks, OptixDeviceContext,
   const OptixModuleCompileOptions *, const OptixPipelineCompileOptions *,
   const char *, size_t, char *, size_t *, OptixModule *, OptixTask *);
 D(optixModuleGetCompilationState, OptixModule, int *);
-D(optixModuleDestroy, OptixModule);
 D(optixTaskExecute, OptixTask, OptixTask *, unsigned int, unsigned int *);
 D(optixProgramGroupCreate, OptixDeviceContext, const OptixProgramGroupDesc *,
   unsigned int, const OptixProgramGroupOptions *, char *, size_t *,
   OptixProgramGroup *);
-D(optixProgramGroupDestroy, OptixProgramGroup);
 D(optixSbtRecordPackHeader, OptixProgramGroup, void *);
 D(optixAccelCompact, OptixDeviceContext, CUstream, OptixTraversableHandle,
   CUdeviceptr, size_t, OptixTraversableHandle *);
@@ -371,7 +371,7 @@ D(optixDenoiserSetup, OptixDenoiserStructPtr, CUstream, unsigned int,
   unsigned int, CUdeviceptr, size_t, CUdeviceptr, size_t);
 D(optixDenoiserInvoke, OptixDenoiserStructPtr, CUstream,
   const OptixDenoiserParams *, CUdeviceptr, size_t,
-  const OptixDenoiserGuideLayer *, const OptixDenoiserLayer *, unsigned int, 
+  const OptixDenoiserGuideLayer *, const OptixDenoiserLayer *, unsigned int,
   unsigned int, unsigned int, CUdeviceptr, size_t);
 D(optixDenoiserComputeIntensity, OptixDenoiserStructPtr, CUstream,
   const OptixImage2D *inputImage, CUdeviceptr, CUdeviceptr, size_t);
@@ -380,7 +380,15 @@ D(optixDenoiserComputeIntensity, OptixDenoiserStructPtr, CUstream,
 
 NAMESPACE_BEGIN(mitsuba)
 extern MI_EXPORT_LIB void optix_initialize();
-extern MI_EXPORT_LIB void optix_shutdown();
+
+/**
+ * \brief RAII wrapper which sets the CUDA context associated to the OptiX
+ * context for the current scope.
+ */
+struct scoped_optix_context {
+    scoped_optix_context();
+    ~scoped_optix_context();
+};
 NAMESPACE_END(mitsuba)
 
 #endif // defined(MI_ENABLE_CUDA)

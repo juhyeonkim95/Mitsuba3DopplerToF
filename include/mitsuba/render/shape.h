@@ -132,7 +132,6 @@ public:
      *
      * \param ray
      *     The ray to be tested for an intersection
-     *
      */
     virtual PreliminaryIntersection3f ray_intersect_preliminary(const Ray3f &ray,
                                                                 Mask active = true) const;
@@ -353,8 +352,7 @@ public:
      *
      * This function maps a 2D UV value to a surface interaction data
      * structure. Its behavior is only well-defined in regions where this
-     * mapping is bijective. Only the mesh data structure currently implements
-     * this interface via ray tracing, others are to follow later.
+     * mapping is bijective.
      * The default implementation throws.
      */
     virtual SurfaceInteraction3f eval_parameterization(const Point2f &uv,
@@ -523,7 +521,7 @@ public:
      * The default implementation creates a new HitGroupSbtRecord and fills its
      * \ref data field with \ref m_optix_data_ptr. It then calls \ref
      * optixSbtRecordPackHeader with one of the OptixProgramGroup of the \ref
-     * program_groups array (the actual program group index is infered by the
+     * program_groups array (the actual program group index is inferred by the
      * type of the Shape, see \ref get_shape_descr_idx()).
      */
     virtual void optix_fill_hitgroup_records(std::vector<HitGroupSbtRecord> &hitgroup_records,
@@ -542,8 +540,9 @@ public:
     // Mark that shape as an instance
     void mark_as_instance() { m_is_instance = true; }
 
-    /// The \c Scene class needs access to \c Shape::m_dirty
+    /// The \c Scene and \c ShapeGroup class needs access to \c Shape::m_dirty
     friend class Scene<Float, Spectrum>;
+    friend class ShapeGroup<Float, Spectrum>;
 
     /// Return whether any shape's parameters require gradients (default return false)
     virtual bool parameters_grad_enabled() const;
@@ -580,7 +579,7 @@ protected:
     void* m_optix_data_ptr = nullptr;
 #endif
 
-private:
+protected:
     /// True if the shape's geometry has changed
     bool m_dirty = true;
 };
@@ -588,7 +587,7 @@ private:
 MI_EXTERN_CLASS(Shape)
 NAMESPACE_END(mitsuba)
 
-#define MI_IMPLEMENT_RAY_INTERSECT_PACKET(N)                                  \
+#define MI_IMPLEMENT_RAY_INTERSECT_PACKET(N)                                   \
     using typename Base::FloatP##N;                                            \
     using typename Base::UInt32P##N;                                           \
     using typename Base::MaskP##N;                                             \
@@ -599,7 +598,7 @@ NAMESPACE_END(mitsuba)
     ray_intersect_preliminary_packet(                                          \
         const Ray3fP##N &ray, MaskP##N active) const override {                \
         (void) ray; (void) active;                                             \
-        if constexpr (!dr::is_cuda_v<Float>)                             \
+        if constexpr (!dr::is_cuda_v<Float>)                                   \
             return ray_intersect_preliminary_impl<FloatP##N>(ray, active);     \
         else                                                                   \
             Throw("ray_intersect_preliminary_packet() CUDA not supported");    \
@@ -607,25 +606,25 @@ NAMESPACE_END(mitsuba)
     MaskP##N ray_test_packet(const Ray3fP##N &ray, MaskP##N active)            \
         const override {                                                       \
         (void) ray; (void) active;                                             \
-        if constexpr (!dr::is_cuda_v<Float>)                             \
+        if constexpr (!dr::is_cuda_v<Float>)                                   \
             return ray_test_impl<FloatP##N>(ray, active);                      \
         else                                                                   \
             Throw("ray_intersect_preliminary_packet() CUDA not supported");    \
     }
 
 // Macro to define ray intersection methods given an *_impl() templated implementation
-#define MI_SHAPE_DEFINE_RAY_INTERSECT_METHODS()                               \
+#define MI_SHAPE_DEFINE_RAY_INTERSECT_METHODS()                                \
     PreliminaryIntersection3f ray_intersect_preliminary(                       \
         const Ray3f &ray, Mask active) const override {                        \
-        MI_MASK_ARGUMENT(active);                                             \
-        PreliminaryIntersection3f pi = dr::zeros<PreliminaryIntersection3f>();  \
+        MI_MASK_ARGUMENT(active);                                              \
+        PreliminaryIntersection3f pi = dr::zeros<PreliminaryIntersection3f>(); \
         std::tie(pi.t, pi.prim_uv, pi.shape_index, pi.prim_index) =            \
             ray_intersect_preliminary_impl<Float>(ray, active);                \
         pi.shape = this;                                                       \
         return pi;                                                             \
     }                                                                          \
     Mask ray_test(const Ray3f &ray, Mask active) const override {              \
-        MI_MASK_ARGUMENT(active);                                             \
+        MI_MASK_ARGUMENT(active);                                              \
         return ray_test_impl<Float>(ray, active);                              \
     }                                                                          \
     using typename Base::ScalarRay3f;                                          \
@@ -636,8 +635,8 @@ NAMESPACE_END(mitsuba)
     ScalarMask ray_test_scalar(const ScalarRay3f &ray) const override {        \
         return ray_test_impl<ScalarFloat>(ray, true);                          \
     }                                                                          \
-    MI_IMPLEMENT_RAY_INTERSECT_PACKET(4)                                      \
-    MI_IMPLEMENT_RAY_INTERSECT_PACKET(8)                                      \
+    MI_IMPLEMENT_RAY_INTERSECT_PACKET(4)                                       \
+    MI_IMPLEMENT_RAY_INTERSECT_PACKET(8)                                       \
     MI_IMPLEMENT_RAY_INTERSECT_PACKET(16)
 
 // -----------------------------------------------------------------------
@@ -654,6 +653,11 @@ DRJIT_VCALL_TEMPLATE_BEGIN(mitsuba::Shape)
     DRJIT_VCALL_METHOD(ray_test)
     DRJIT_VCALL_METHOD(sample_position)
     DRJIT_VCALL_METHOD(adjust_time)
+    DRJIT_VCALL_METHOD(pdf_position)
+    DRJIT_VCALL_METHOD(sample_direction)
+    DRJIT_VCALL_METHOD(pdf_direction)
+    DRJIT_VCALL_METHOD(eval_parameterization)
+    DRJIT_VCALL_METHOD(surface_area)
     DRJIT_VCALL_GETTER(emitter, const typename Class::Emitter *)
     DRJIT_VCALL_GETTER(sensor, const typename Class::Sensor *)
     DRJIT_VCALL_GETTER(bsdf, const typename Class::BSDF *)

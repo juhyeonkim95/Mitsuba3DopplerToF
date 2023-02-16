@@ -345,8 +345,6 @@ static const char *__doc_mitsuba_AdjointIntegrator_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_AdjointIntegrator_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_AdjointIntegrator_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_AdjointIntegrator_AdjointIntegrator = R"doc(Create an integrator)doc";
 
 static const char *__doc_mitsuba_AdjointIntegrator_class = R"doc()doc";
@@ -570,8 +568,6 @@ static const char *__doc_mitsuba_BSDF_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_BSDF_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_BSDF_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_BSDFContext =
 R"doc(Context data structure for BSDF evaluation and sampling
 
@@ -749,7 +745,18 @@ Parameter ``si``:
 Parameter ``wo``:
     The outgoing direction)doc";
 
-static const char *__doc_mitsuba_BSDF_eval_diffuse_reflectance = R"doc(Return the diffuse reflectance value)doc";
+static const char *__doc_mitsuba_BSDF_eval_diffuse_reflectance =
+R"doc(Evaluate the diffuse reflectance
+
+This method approximates the total diffuse reflectance for a given
+direction. For some materials, an exact value can be computed
+inexpensively. When this is not possible, the value is approximated by
+evaluating the BSDF for a normal outgoing direction and returning this
+value multiplied by pi. This is the default behaviour of this method.
+
+Parameter ``si``:
+    A surface interaction data structure describing the underlying
+    surface position.)doc";
 
 static const char *__doc_mitsuba_BSDF_eval_null_transmission =
 R"doc(Evaluate un-scattered transmission component of the BSDF
@@ -795,6 +802,37 @@ Parameter ``si``:
 
 Parameter ``wo``:
     The outgoing direction)doc";
+
+static const char *__doc_mitsuba_BSDF_eval_pdf_sample =
+R"doc(Jointly evaluate the BSDF f(wi, wo), the probability per unit solid
+angle of sampling the given direction ``wo`` and importance sample the
+BSDF model.
+
+This is simply a wrapper around two separate function calls to
+eval_pdf() and sample(). The function exists to perform a smaller
+number of virtual function calls, which has some performance benefits
+on highly vectorized JIT variants of the renderer. (A ~20% performance
+improvement for the basic path tracer on CUDA)
+
+Parameter ``ctx``:
+    A context data structure describing which lobes to evaluate, and
+    whether radiance or importance are being transported.
+
+Parameter ``si``:
+    A surface interaction data structure describing the underlying
+    surface position. The incident direction is obtained from the
+    field ``si.wi``.
+
+Parameter ``wo``:
+    The outgoing direction
+
+Parameter ``sample1``:
+    A uniformly distributed sample on :math:`[0,1]`. It is used to
+    select the BSDF lobe in multi-lobe models.
+
+Parameter ``sample2``:
+    A uniformly distributed sample on :math:`[0,1]^2`. It is used to
+    generate the sampled direction.)doc";
 
 static const char *__doc_mitsuba_BSDF_flags = R"doc(Flags for all components combined.)doc";
 
@@ -2237,8 +2275,6 @@ static const char *__doc_mitsuba_Emitter_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Emitter_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Emitter_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_EmitterFlags =
 R"doc(This list of flags is used to classify the different types of
 emitters.)doc";
@@ -2326,8 +2362,6 @@ static const char *__doc_mitsuba_Endpoint_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Endpoint_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Endpoint_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_Endpoint_Endpoint = R"doc()doc";
 
 static const char *__doc_mitsuba_Endpoint_bbox = R"doc(Return an axis-aligned box bounding the spatial extents of the emitter)doc";
@@ -2383,7 +2417,8 @@ Parameter ``ds``:
     A direction sampling record, which specifies the query location.
 
 Returns:
-    The incident direct radiance/importance accoated with the sample.)doc";
+    The incident direct radiance/importance associated with the
+    sample.)doc";
 
 static const char *__doc_mitsuba_Endpoint_id = R"doc(Return a string identifier)doc";
 
@@ -2735,8 +2770,6 @@ static const char *__doc_mitsuba_Film_2 = R"doc()doc";
 static const char *__doc_mitsuba_Film_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Film_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_Film_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_FilmFlags = R"doc(This list of flags is used to classify the different types of films.)doc";
 
@@ -3187,8 +3220,6 @@ static const char *__doc_mitsuba_ImageBlock_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_ImageBlock_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_ImageBlock_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_ImageBlock_ImageBlock =
 R"doc(Construct a zero-initialized image block with the desired shape and
 channel count
@@ -3238,9 +3269,8 @@ pixel values.
 Disabled by default.
 
 Parameter ``coalesce``:
-    This parameter is only relevant for JIT variants (it is enabled by
-    default only in LLVM mode), where it subtly affects the behavior
-    of the performance-critical put() method.
+    This parameter is only relevant for JIT variants, where it subtly
+    affects the behavior of the performance-critical put() method.
 
 In coalesced mode, put() conservatively bounds the footprint and
 traverses it in lockstep across the whole wavefront. This causes
@@ -3254,6 +3284,14 @@ generate samples within pixels on the sensor.
 In contrast, non-coalesced mode is preferable when the input positions
 are random and will in any case be subject to thread divergence (e.g.
 in a particle tracer that makes random connections to the sensor).
+
+Parameter ``compensate``:
+    If set to ``True``, the implementation internally switches to
+    Kahan-style error-compensated floating point accumulation. This is
+    useful when accumulating many samples into a single precision
+    image block. Note that this is currently only supported in JIT
+    modes, and that it can make the accumulation quite a bit more
+    expensive. The default is ``False``.
 
 Parameter ``warn_negative``:
     If set to ``True``, put() will warn when writing samples with
@@ -3280,6 +3318,8 @@ the read() function.
 
 See the other constructor for an explanation of the parameters.)doc";
 
+static const char *__doc_mitsuba_ImageBlock_accum = R"doc()doc";
+
 static const char *__doc_mitsuba_ImageBlock_border_size = R"doc(Return the border region used by the reconstruction filter)doc";
 
 static const char *__doc_mitsuba_ImageBlock_channel_count = R"doc(Return the number of channels stored by the image block)doc";
@@ -3289,6 +3329,8 @@ static const char *__doc_mitsuba_ImageBlock_class = R"doc()doc";
 static const char *__doc_mitsuba_ImageBlock_clear = R"doc(Clear the image block contents to zero.)doc";
 
 static const char *__doc_mitsuba_ImageBlock_coalesce = R"doc(Try to coalesce reads/writes in JIT modes?)doc";
+
+static const char *__doc_mitsuba_ImageBlock_compensate = R"doc(Use Kahan-style error-compensated floating point accumulation?)doc";
 
 static const char *__doc_mitsuba_ImageBlock_has_border = R"doc(Does the image block have a border region?)doc";
 
@@ -3300,6 +3342,8 @@ static const char *__doc_mitsuba_ImageBlock_m_channel_count = R"doc()doc";
 
 static const char *__doc_mitsuba_ImageBlock_m_coalesce = R"doc()doc";
 
+static const char *__doc_mitsuba_ImageBlock_m_compensate = R"doc()doc";
+
 static const char *__doc_mitsuba_ImageBlock_m_normalize = R"doc()doc";
 
 static const char *__doc_mitsuba_ImageBlock_m_offset = R"doc()doc";
@@ -3309,6 +3353,8 @@ static const char *__doc_mitsuba_ImageBlock_m_rfilter = R"doc()doc";
 static const char *__doc_mitsuba_ImageBlock_m_size = R"doc()doc";
 
 static const char *__doc_mitsuba_ImageBlock_m_tensor = R"doc()doc";
+
+static const char *__doc_mitsuba_ImageBlock_m_tensor_compensation = R"doc()doc";
 
 static const char *__doc_mitsuba_ImageBlock_m_warn_invalid = R"doc()doc";
 
@@ -3338,7 +3384,7 @@ Parameter ``value``:
     Sample value associated with the specified wavelengths
 
 Parameter ``alpha``:
-    Alpha value assocated with the sample)doc";
+    Alpha value associated with the sample)doc";
 
 static const char *__doc_mitsuba_ImageBlock_put_2 =
 R"doc(Accumulate a single sample or a wavefront of samples into the image
@@ -3371,6 +3417,8 @@ Parameter ``values``:
 static const char *__doc_mitsuba_ImageBlock_rfilter = R"doc(Return the image reconstruction filter underlying the ImageBlock)doc";
 
 static const char *__doc_mitsuba_ImageBlock_set_coalesce = R"doc(Try to coalesce reads/writes in JIT modes?)doc";
+
+static const char *__doc_mitsuba_ImageBlock_set_compensate = R"doc(Use Kahan-style error-compensated floating point accumulation?)doc";
 
 static const char *__doc_mitsuba_ImageBlock_set_normalize = R"doc(Re-normalize filter weights in put() and read())doc";
 
@@ -3423,8 +3471,6 @@ static const char *__doc_mitsuba_Integrator_2 = R"doc()doc";
 static const char *__doc_mitsuba_Integrator_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Integrator_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_Integrator_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_Integrator_Integrator = R"doc(Create an integrator)doc";
 
@@ -3912,8 +3958,6 @@ static const char *__doc_mitsuba_Medium_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Medium_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Medium_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_MediumInteraction = R"doc(Stores information related to a medium scattering interaction)doc";
 
 static const char *__doc_mitsuba_MediumInteraction_MediumInteraction = R"doc()doc";
@@ -4045,6 +4089,8 @@ Returns:
 static const char *__doc_mitsuba_Medium_set_id = R"doc(Set a string identifier)doc";
 
 static const char *__doc_mitsuba_Medium_to_string = R"doc(Return a human-readable representation of the Medium)doc";
+
+static const char *__doc_mitsuba_Medium_traverse = R"doc()doc";
 
 static const char *__doc_mitsuba_Medium_use_emitter_sampling = R"doc(Returns whether this specific medium instance uses emitter sampling)doc";
 
@@ -4193,8 +4239,6 @@ static const char *__doc_mitsuba_Mesh_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Mesh_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_Mesh_Mesh = R"doc(Create a new mesh with the given vertex and face data structures)doc";
 
 static const char *__doc_mitsuba_Mesh_Mesh_2 = R"doc()doc";
@@ -4302,6 +4346,8 @@ static const char *__doc_mitsuba_Mesh_m_name = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_m_parameterization = R"doc(Optional: used in eval_parameterization())doc";
 
+static const char *__doc_mitsuba_Mesh_m_scene = R"doc(Pointer to the scene that owns this mesh)doc";
+
 static const char *__doc_mitsuba_Mesh_m_vertex_buffer_ptr = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_m_vertex_count = R"doc()doc";
@@ -4385,6 +4431,8 @@ static const char *__doc_mitsuba_Mesh_recompute_bbox = R"doc(Recompute the bound
 static const char *__doc_mitsuba_Mesh_recompute_vertex_normals = R"doc(Compute smooth vertex normals and replace the current normal values)doc";
 
 static const char *__doc_mitsuba_Mesh_sample_position = R"doc()doc";
+
+static const char *__doc_mitsuba_Mesh_set_scene = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_surface_area = R"doc()doc";
 
@@ -4597,8 +4645,6 @@ static const char *__doc_mitsuba_MonteCarloIntegrator_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_MonteCarloIntegrator_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_MonteCarloIntegrator_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_MonteCarloIntegrator_MonteCarloIntegrator = R"doc(Create an integrator)doc";
 
 static const char *__doc_mitsuba_MonteCarloIntegrator_class = R"doc()doc";
@@ -4766,8 +4812,6 @@ static const char *__doc_mitsuba_OptixDenoiser_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_OptixDenoiser_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_OptixDenoiser_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_OptixDenoiser_OptixDenoiser =
 R"doc(Constructs an OptiX denoiser
 
@@ -4834,7 +4878,7 @@ Parameter ``normals``:
 
 Parameter ``to_sensor``:
     A Transform4f which is applied to the ``normals`` parameter before
-    denoising. This should be used to tranform the normals into the
+    denoising. This should be used to transform the normals into the
     correct coordinate frame. This parameter is optional, by default
     no transformation is applied.
 
@@ -4884,7 +4928,7 @@ Parameter ``normals_ch``:
 
 Parameter ``to_sensor``:
     A Transform4f which is applied to the ``normals`` parameter before
-    denoising. This should be used to tranform the normals into the
+    denoising. This should be used to transform the normals into the
     correct coordinate frame. This parameter is optional, by default
     no transformation is applied.
 
@@ -4927,8 +4971,6 @@ static const char *__doc_mitsuba_PCG32Sampler_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_PCG32Sampler_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_PCG32Sampler_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_PCG32Sampler_PCG32Sampler = R"doc()doc";
 
 static const char *__doc_mitsuba_PCG32Sampler_PCG32Sampler_2 = R"doc(Copy state to a new PCG32Sampler object)doc";
@@ -4966,8 +5008,6 @@ static const char *__doc_mitsuba_PhaseFunction_2 = R"doc()doc";
 static const char *__doc_mitsuba_PhaseFunction_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_PhaseFunction_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_PhaseFunction_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_PhaseFunctionContext = R"doc()doc";
 
@@ -5238,6 +5278,18 @@ If the intersection is deemed relevant, detailed intersection
 information can later be obtained via the create_surface_interaction()
 method.)doc";
 
+static const char *__doc_mitsuba_PreliminaryIntersection_2 =
+R"doc(Stores preliminary information related to a ray intersection
+
+This data structure is used as return type for the
+Shape::ray_intersect_preliminary efficient ray intersection routine.
+It stores whether the shape is intersected by a given ray, and cache
+preliminary information about the intersection if that is the case.
+
+If the intersection is deemed relevant, detailed intersection
+information can later be obtained via the create_surface_interaction()
+method.)doc";
+
 static const char *__doc_mitsuba_PreliminaryIntersection_PreliminaryIntersection = R"doc()doc";
 
 static const char *__doc_mitsuba_PreliminaryIntersection_PreliminaryIntersection_2 = R"doc()doc";
@@ -5424,8 +5476,6 @@ static const char *__doc_mitsuba_ProjectiveCamera_2 = R"doc()doc";
 static const char *__doc_mitsuba_ProjectiveCamera_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_ProjectiveCamera_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_ProjectiveCamera_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_ProjectiveCamera_ProjectiveCamera = R"doc()doc";
 
@@ -5864,11 +5914,11 @@ static const char *__doc_mitsuba_Ray_apply_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Ray_apply_label = R"doc()doc";
 
-static const char *__doc_mitsuba_Ray_d = R"doc(Ray origin)doc";
+static const char *__doc_mitsuba_Ray_d = R"doc(Ray direction)doc";
 
-static const char *__doc_mitsuba_Ray_maxt = R"doc(Ray direction)doc";
+static const char *__doc_mitsuba_Ray_maxt = R"doc(Maximum position on the ray segment)doc";
 
-static const char *__doc_mitsuba_Ray_o = R"doc()doc";
+static const char *__doc_mitsuba_Ray_o = R"doc(Ray origin)doc";
 
 static const char *__doc_mitsuba_Ray_operator_array = R"doc()doc";
 
@@ -5884,9 +5934,9 @@ static const char *__doc_mitsuba_Ray_operator_call = R"doc(Return the position o
 
 static const char *__doc_mitsuba_Ray_reverse = R"doc(Return a ray that points into the opposite direction)doc";
 
-static const char *__doc_mitsuba_Ray_time = R"doc(Maximum position on the ray segment)doc";
+static const char *__doc_mitsuba_Ray_time = R"doc(Time value associated with this ray)doc";
 
-static const char *__doc_mitsuba_Ray_wavelengths = R"doc(Time value associated with this ray)doc";
+static const char *__doc_mitsuba_Ray_wavelengths = R"doc(Wavelength associated with the ray)doc";
 
 static const char *__doc_mitsuba_ReconstructionFilter =
 R"doc(Generic interface to separable image reconstruction filters
@@ -5905,8 +5955,6 @@ static const char *__doc_mitsuba_ReconstructionFilter_2 = R"doc()doc";
 static const char *__doc_mitsuba_ReconstructionFilter_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_ReconstructionFilter_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_ReconstructionFilter_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_ReconstructionFilter_ReconstructionFilter = R"doc(Create a new reconstruction filter)doc";
 
@@ -6080,8 +6128,6 @@ static const char *__doc_mitsuba_Sampler_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Sampler_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Sampler_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_Sampler_Sampler = R"doc()doc";
 
 static const char *__doc_mitsuba_Sampler_Sampler_2 = R"doc(Copy state to a new sampler object)doc";
@@ -6175,8 +6221,6 @@ static const char *__doc_mitsuba_SamplingIntegrator_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_SamplingIntegrator_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_SamplingIntegrator_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_SamplingIntegrator_SamplingIntegrator = R"doc(//! @})doc";
 
 static const char *__doc_mitsuba_SamplingIntegrator_class = R"doc()doc";
@@ -6265,8 +6309,6 @@ static const char *__doc_mitsuba_Scene_2 = R"doc()doc";
 static const char *__doc_mitsuba_Scene_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Scene_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_Scene_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_Scene_Scene = R"doc(Instantiate a scene from a Properties object)doc";
 
@@ -6767,8 +6809,6 @@ static const char *__doc_mitsuba_Sensor_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Sensor_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Sensor_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_Sensor_Sensor = R"doc()doc";
 
 static const char *__doc_mitsuba_Sensor_class = R"doc()doc";
@@ -6897,8 +6937,6 @@ static const char *__doc_mitsuba_Shape_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Shape_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Shape_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_ShapeGroup = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_2 = R"doc()doc";
@@ -6906,8 +6944,6 @@ static const char *__doc_mitsuba_ShapeGroup_2 = R"doc()doc";
 static const char *__doc_mitsuba_ShapeGroup_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_ShapeGroup_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_ShapeGroup = R"doc()doc";
 
@@ -6929,6 +6965,8 @@ static const char *__doc_mitsuba_ShapeGroup_m_accel = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_m_bbox = R"doc()doc";
 
+static const char *__doc_mitsuba_ShapeGroup_m_embree_geometries = R"doc()doc";
+
 static const char *__doc_mitsuba_ShapeGroup_m_embree_scene = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_m_has_meshes = R"doc()doc";
@@ -6941,19 +6979,25 @@ static const char *__doc_mitsuba_ShapeGroup_m_shapes = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_m_shapes_registry_ids = R"doc()doc";
 
-static const char *__doc_mitsuba_ShapeGroup_optix_accel_ready = R"doc()doc";
-
 static const char *__doc_mitsuba_ShapeGroup_optix_build_gas = R"doc(Build OptiX geometry acceleration structures)doc";
 
 static const char *__doc_mitsuba_ShapeGroup_optix_fill_hitgroup_records = R"doc()doc";
 
+static const char *__doc_mitsuba_ShapeGroup_optix_prepare_geometry = R"doc()doc";
+
 static const char *__doc_mitsuba_ShapeGroup_optix_prepare_ias = R"doc()doc";
+
+static const char *__doc_mitsuba_ShapeGroup_parameters_changed = R"doc()doc";
+
+static const char *__doc_mitsuba_ShapeGroup_parameters_grad_enabled = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_primitive_count = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_surface_area = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeGroup_to_string = R"doc()doc";
+
+static const char *__doc_mitsuba_ShapeGroup_traverse = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeKDTree = R"doc()doc";
 
@@ -6962,8 +7006,6 @@ static const char *__doc_mitsuba_ShapeKDTree_2 = R"doc()doc";
 static const char *__doc_mitsuba_ShapeKDTree_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeKDTree_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_ShapeKDTree_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_ShapeKDTree_ShapeKDTree =
 R"doc(Create an empty kd-tree and take build-related parameters from
@@ -7150,9 +7192,7 @@ R"doc(Parameterize the mesh using UV values
 
 This function maps a 2D UV value to a surface interaction data
 structure. Its behavior is only well-defined in regions where this
-mapping is bijective. Only the mesh data structure currently
-implements this interface via ray tracing, others are to follow later.
-The default implementation throws.)doc";
+mapping is bijective. The default implementation throws.)doc";
 
 static const char *__doc_mitsuba_Shape_exterior_medium = R"doc(Return the medium that lies on the exterior of this shape)doc";
 
@@ -7243,8 +7283,8 @@ Parameter ``program_groups``:
 The default implementation creates a new HitGroupSbtRecord and fills
 its data field with m_optix_data_ptr. It then calls
 optixSbtRecordPackHeader with one of the OptixProgramGroup of the
-program_groups array (the actual program group index is infered by the
-type of the Shape, see get_shape_descr_idx()).)doc";
+program_groups array (the actual program group index is inferred by
+the type of the Shape, see get_shape_descr_idx()).)doc";
 
 static const char *__doc_mitsuba_Shape_optix_prepare_geometry =
 R"doc(Populates the GPU data buffer, used in the OptiX Hitgroup sbt records.
@@ -7657,7 +7697,7 @@ static const char *__doc_mitsuba_Stream_skip = R"doc(Skip ahead by a given numbe
 
 static const char *__doc_mitsuba_Stream_tell = R"doc(Gets the current position inside the stream)doc";
 
-static const char *__doc_mitsuba_Stream_to_string = R"doc(Returns a human-readable desriptor of the stream)doc";
+static const char *__doc_mitsuba_Stream_to_string = R"doc(Returns a human-readable descriptor of the stream)doc";
 
 static const char *__doc_mitsuba_Stream_truncate =
 R"doc(Truncates the stream to a given size.
@@ -8054,6 +8094,20 @@ static const char *__doc_mitsuba_SurfaceInteraction_duv_dy = R"doc(UV partials w
 static const char *__doc_mitsuba_SurfaceInteraction_emitter =
 R"doc(Return the emitter associated with the intersection (if any) \note
 Defined in scene.h)doc";
+
+static const char *__doc_mitsuba_SurfaceInteraction_finalize_surface_interaction =
+R"doc(Fills uninitialized fields after a call to
+Shape::compute_surface_interaction()
+
+Parameter ``pi``:
+    Preliminary intersection which was used to during the call to
+    Shape::compute_surface_interaction()
+
+Parameter ``ray``:
+    Ray associated with the ray intersection
+
+Parameter ``ray_flags``:
+    Flags specifying which information should be computed)doc";
 
 static const char *__doc_mitsuba_SurfaceInteraction_has_n_partials = R"doc()doc";
 
@@ -8618,8 +8672,6 @@ static const char *__doc_mitsuba_Texture_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Texture_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Texture_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_Texture_D65 = R"doc(Convenience function returning the standard D65 illuminant)doc";
 
 static const char *__doc_mitsuba_Texture_D65_2 =
@@ -9156,8 +9208,6 @@ static const char *__doc_mitsuba_Volume_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_Volume_4 = R"doc()doc";
 
-static const char *__doc_mitsuba_Volume_5 = R"doc()doc";
-
 static const char *__doc_mitsuba_VolumeGrid = R"doc()doc";
 
 static const char *__doc_mitsuba_VolumeGrid_2 = R"doc()doc";
@@ -9165,8 +9215,6 @@ static const char *__doc_mitsuba_VolumeGrid_2 = R"doc()doc";
 static const char *__doc_mitsuba_VolumeGrid_3 = R"doc()doc";
 
 static const char *__doc_mitsuba_VolumeGrid_4 = R"doc()doc";
-
-static const char *__doc_mitsuba_VolumeGrid_5 = R"doc()doc";
 
 static const char *__doc_mitsuba_VolumeGrid_VolumeGrid =
 R"doc(Load a VolumeGrid from a given filename
@@ -10485,8 +10533,6 @@ static const char *__doc_mitsuba_operator_sub_2 = R"doc(Subtracting a vector fro
 
 static const char *__doc_mitsuba_optix_initialize = R"doc()doc";
 
-static const char *__doc_mitsuba_optix_shutdown = R"doc()doc";
-
 static const char *__doc_mitsuba_orthographic_projection =
 R"doc(Helper function to create a orthographic projection transformation
 matrix)doc";
@@ -10829,6 +10875,12 @@ static const char *__doc_mitsuba_sample_wavelength =
 R"doc(Helper function to sample a wavelength (and a weight) given a random
 number)doc";
 
+static const char *__doc_mitsuba_scoped_optix_context =
+R"doc(RAII wrapper which sets the CUDA context associated to the OptiX
+context for the current scope.)doc";
+
+static const char *__doc_mitsuba_scoped_optix_context_scoped_optix_context = R"doc()doc";
+
 static const char *__doc_mitsuba_sggx_ndf_pdf =
 R"doc(Evaluates the probability of sampling a given normal using the SGGX
 microflake distribution
@@ -10844,7 +10896,7 @@ Parameter ``s``:
     definite matrix.
 
 Returns:
-    The probablity of sampling a certain normal)doc";
+    The probability of sampling a certain normal)doc";
 
 static const char *__doc_mitsuba_sggx_projected_area =
 R"doc(Evaluates the projected area of the SGGX microflake distribution

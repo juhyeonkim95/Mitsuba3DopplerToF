@@ -5,9 +5,9 @@ alt="Mitsuba banner">
 
 # Mitsuba Renderer 3
 
-| Documentation  | Tutorial videos  | Linux             | MacOS             | Windows           |
-|      :---:     |      :---:       |       :---:       |       :---:       |       :---:       |
-| [![docs][1]][2]| [![vids][9]][10] | [![rgl-ci][3]][4] | [![rgl-ci][5]][6] | [![rgl-ci][7]][8] |
+| Documentation  | Tutorial videos  | Linux             | MacOS             | Windows           |       PyPI        |
+|      :---:     |      :---:       |       :---:       |       :---:       |       :---:       |       :---:       |
+| [![docs][1]][2]| [![vids][9]][10] | [![rgl-ci][3]][4] | [![rgl-ci][5]][6] | [![rgl-ci][7]][8] | [![pypi][11]][12] |
 
 [1]: https://readthedocs.org/projects/mitsuba/badge/?version=stable
 [2]: https://mitsuba.readthedocs.io/en/stable/
@@ -19,6 +19,8 @@ alt="Mitsuba banner">
 [8]: https://rgl-ci.epfl.ch/viewType.html?buildTypeId=Mitsuba3_WindowsAmd64msvc2020&guest=1
 [9]: https://img.shields.io/badge/YouTube-View-green?style=plastic&logo=youtube
 [10]: https://www.youtube.com/watch?v=9Ja9buZx0Cs&list=PLI9y-85z_Po6da-pyTNGTns2n4fhpbLe5&index=1
+[11]: https://img.shields.io/pypi/v/mitsuba.svg?color=green
+[12]: https://pypi.org/pypi/mitsuba
 
 ## Introduction
 
@@ -132,11 +134,11 @@ Significant features and/or improvements to the code were contributed by
 When using Mitsuba 3 in academic projects, please cite:
 
 ```bibtex
-@software{jakob2022mitsuba3,
+@software{Mitsuba3,
     title = {Mitsuba 3 renderer},
     author = {Wenzel Jakob and Sébastien Speierer and Nicolas Roussel and Merlin Nimier-David and Delio Vicini and Tizian Zeltner and Baptiste Nicolet and Miguel Crespo and Vincent Leroy and Ziyi Zhang},
     note = {https://mitsuba-renderer.org},
-    version = {3.0.1},
-    year = 2022,
+    version = {3.1.1},
+    year = 2022
 }
 ```
