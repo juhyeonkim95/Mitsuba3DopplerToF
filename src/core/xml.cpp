@@ -256,11 +256,6 @@ struct XMLParseContext {
     ColorMode color_mode;
     std::string variant;
     bool parallel;
-
-    std::unordered_map<std::string, XMLObject> instances;
-    Transform4f transform;
-    ColorMode color_mode;
-    uint32_t id_counter = 0;
     uint32_t backend = 0;
 
     XMLParseContext(const std::string &variant, bool parallel)
