@@ -168,8 +168,8 @@ ShapeGroup<Float, Spectrum>::primitive_count() const {
 #if defined(MI_ENABLE_CUDA)
 MI_VARIANT void ShapeGroup<Float, Spectrum>::optix_prepare_ias(
     const OptixDeviceContext &context, std::vector<OptixInstance> &instances,
-    uint32_t instance_id, const ScalarTransform4f &transf) {
-    prepare_ias(context, m_shapes, m_sbt_offset, m_accel, instance_id, transf, instances);
+    uint32_t instance_id, const ScalarTransform4f &transf, const ref<AnimatedTransform> &animated_transf) {
+    prepare_ias(context, m_shapes, m_sbt_offset, m_accel, instance_id, transf, animated_transf, instances);
 }
 
 MI_VARIANT void ShapeGroup<Float, Spectrum>::optix_fill_hitgroup_records(std::vector<HitGroupSbtRecord> &hitgroup_records,

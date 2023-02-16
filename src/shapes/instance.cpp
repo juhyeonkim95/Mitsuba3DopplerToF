@@ -60,10 +60,15 @@ public:
 
     Instance(const Properties &props) : Base(props) {
         m_transform = props.animated_transform("to_world");
-        std::cout << "Instance Animation Transform " << m_transform.get()->to_string() << std::endl;
+        //m_to_world = (ScalarTransform4f) m_transform->eval(0.0);
+        //m_to_object = m_to_world.scalar().inverse();
+
+        std::cout << "Instance Animation Transform: \n " << m_transform.get()->to_string() << std::endl;
 
         // .get<ScalarTransform4f>("to_world", ScalarTransform4f());
         for (auto &kv : props.objects()) {
+            std::cout << kv.second.get()->to_string() << std::endl;
+
             Base *shape = dynamic_cast<Base *>(kv.second.get());
             if (shape && shape->is_shapegroup()) {
                 if (m_shapegroup)
@@ -101,8 +106,10 @@ public:
             return bbox;
 
         ScalarBoundingBox3f result;
-        for (int i = 0; i < 8; ++i)
-            result.expand(m_to_world.scalar() * bbox.corner(i));
+        for (int i = 0; i < 8; ++i){
+            result.expand(m_transform->eval(0.0)* bbox.corner(i));
+            result.expand(m_transform->eval(1.0)* bbox.corner(i));
+        }
         return result;
     }
 
@@ -151,39 +158,41 @@ public:
                                                      uint32_t recursion_depth,
                                                      Mask active) const override {
         MI_MASK_ARGUMENT(active);
+        Transform4f to_world = m_transform->eval(ray.time);
+        Transform4f to_object = to_world.inverse();
 
         // Nested instancing is not supported
         if (recursion_depth > 0)
             return dr::zeros<SurfaceInteraction3f>();
 
         SurfaceInteraction3f si = m_shapegroup->compute_surface_interaction(
-            m_to_object.value().transform_affine(ray), pi, ray_flags, recursion_depth, active);
+            to_object.transform_affine(ray), pi, ray_flags, recursion_depth, active);
 
-        si.p = m_to_world.value().transform_affine(si.p);
-        si.n = dr::normalize(m_to_world.value().transform_affine(si.n));
+        si.p = to_world.transform_affine(si.p);
+        si.n = dr::normalize(to_world.transform_affine(si.n));
 
         if (likely(has_flag(ray_flags, RayFlags::ShadingFrame))) {
-            si.sh_frame.n = dr::normalize(m_to_world.value().transform_affine(si.sh_frame.n));
+            si.sh_frame.n = dr::normalize(to_world.transform_affine(si.sh_frame.n));
             si.initialize_sh_frame();
         }
 
         if (likely(has_flag(ray_flags, RayFlags::dPdUV))) {
-            si.dp_du = m_to_world.value().transform_affine(si.dp_du);
-            si.dp_dv = m_to_world.value().transform_affine(si.dp_dv);
+            si.dp_du = to_world.transform_affine(si.dp_du);
+            si.dp_dv = to_world.transform_affine(si.dp_dv);
         }
 
         if (has_flag(ray_flags, RayFlags::dNGdUV) || has_flag(ray_flags, RayFlags::dNSdUV)) {
             Normal3f n = has_flag(ray_flags, RayFlags::dNGdUV) ? si.n : si.sh_frame.n;
 
             // Determine the length of the transformed normal before it was re-normalized
-            Normal3f tn = m_to_world.value().transform_affine(
-                dr::normalize(m_to_object.value().transform_affine(n)));
+            Normal3f tn = to_world.transform_affine(
+                dr::normalize(to_object.transform_affine(n)));
             Float inv_len = dr::rcp(dr::norm(tn));
             tn *= inv_len;
 
             // Apply transform to dn_du and dn_dv
-            si.dn_du = m_to_world.value().transform_affine(Normal3f(si.dn_du)) * inv_len;
-            si.dn_dv = m_to_world.value().transform_affine(Normal3f(si.dn_dv)) * inv_len;
+            si.dn_du = to_world.transform_affine(Normal3f(si.dn_du)) * inv_len;
+            si.dn_dv = to_world.transform_affine(Normal3f(si.dn_dv)) * inv_len;
 
             si.dn_du -= tn * dr::dot(tn, si.dn_du);
             si.dn_dv -= tn * dr::dot(tn, si.dn_dv);
@@ -192,6 +201,10 @@ public:
         si.instance = this;
 
         return si;
+    }
+
+    ref<ShapeGroup_> get_shapegroup(){
+        return m_shapegroup;
     }
 
     //! @}
@@ -211,9 +224,12 @@ public:
         DRJIT_MARK_USED(device);
         if constexpr (!dr::is_cuda_v<Float>) {
             RTCGeometry instance = m_shapegroup->embree_geometry(device);
-            rtcSetGeometryTimeStepCount(instance, 1);
-            dr::Matrix<ScalarFloat32, 4> matrix(m_to_world.scalar().matrix);
-            rtcSetGeometryTransform(instance, 0, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, &matrix);
+            rtcSetGeometryTimeStepCount(instance, 2);
+            rtcSetGeometryTimeRange(instance, 0, 1);
+            dr::Matrix<ScalarFloat32, 4> matrix0(m_transform->eval(0.0).matrix);
+            rtcSetGeometryTransform(instance, 0, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, &matrix0);
+            dr::Matrix<ScalarFloat32, 4> matrix1(m_transform->eval(1.0).matrix);
+            rtcSetGeometryTransform(instance, 1, RTC_FORMAT_FLOAT4X4_COLUMN_MAJOR, &matrix1);
             rtcCommitGeometry(instance);
             return instance;
         } else {
@@ -226,9 +242,10 @@ public:
     virtual void optix_prepare_ias(const OptixDeviceContext& context,
                                    std::vector<OptixInstance>& instances,
                                    uint32_t instance_id,
-                                   const ScalarTransform4f& transf) override {
+                                   const ScalarTransform4f& transf,
+                                   const ref<AnimatedTransform>& animated_transf) override {
         m_shapegroup->optix_prepare_ias(context, instances, instance_id,
-                                        transf * m_to_world.scalar());
+                                        transf * m_to_world.scalar(), m_transform);
     }
 
     virtual void optix_fill_hitgroup_records(std::vector<HitGroupSbtRecord> &,
@@ -240,7 +257,7 @@ public:
     MI_DECLARE_CLASS()
 private:
    ref<ShapeGroup_> m_shapegroup;
-   ref<const AnimatedTransform> m_transform;
+   ref<AnimatedTransform> m_transform;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(Instance, Shape)

@@ -87,7 +87,7 @@ size_t init_optix_config(bool has_meshes, bool has_others, bool has_instances) {
         module_compile_options.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
     #endif
 
-        config.pipeline_compile_options.usesMotionBlur     = false;
+        config.pipeline_compile_options.usesMotionBlur     = true;
         config.pipeline_compile_options.numPayloadValues   = 6;
         config.pipeline_compile_options.numAttributeValues = 2; // the minimum legal value
         config.pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
@@ -317,7 +317,12 @@ MI_VARIANT void Scene<Float, Spectrum>::accel_parameters_changed_gpu() {
 
             // Gather information about the instance acceleration structures to be built
             std::vector<OptixInstance> ias;
-            prepare_ias(config.context, m_shapes, 0, s.accel, 0u, ScalarTransform4f(), ias);
+            prepare_ias(config.context, m_shapes, 0, s.accel, 0u, ScalarTransform4f(), NULL, ias);
+
+            std::cout << "IAS SIZE: " << ias.size() << std::endl;
+            std::cout << "m_shapes size: " << m_shapes.size() << std::endl;
+            std::cout << "m_shapegroups size: " << m_shapegroups.size() << std::endl;
+            
 
             // If there is only a single IAS, no need to build the "master" IAS
             if (ias.size() == 1) {
@@ -330,6 +335,11 @@ MI_VARIANT void Scene<Float, Spectrum>::accel_parameters_changed_gpu() {
                 accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
                 accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
                 accel_options.motionOptions.numKeys = 0;
+                // accel_options.motionOptions.numKeys = 2;
+                // accel_options.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+                // accel_options.motionOptions.timeBegin = 0.0;
+                // accel_options.motionOptions.timeEnd = 1.0;
+                
 
                 size_t ias_data_size = ias.size() * sizeof(OptixInstance);
                 void* d_ias = jit_malloc(AllocType::HostPinned, ias_data_size);

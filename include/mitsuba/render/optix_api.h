@@ -16,6 +16,7 @@ using OptixModule            = void *;
 using OptixProgramGroup      = void *;
 using OptixResult            = int;
 using OptixTraversableHandle = unsigned long long;
+using OptixTraversableType   = int;
 using OptixBuildOperation    = int;
 using OptixBuildInputType    = int;
 using OptixVertexFormat      = int;
@@ -50,6 +51,8 @@ using OptixDenoiserStructPtr = void*;
 #define OPTIX_COMPILE_DEBUG_LEVEL_NONE           0x2350
 #define OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL        0x2351
 
+#define OPTIX_BUILD_FLAG_NONE 0
+#define OPTIX_BUILD_FLAG_ALLOW_UPDATE 1
 #define OPTIX_BUILD_FLAG_ALLOW_COMPACTION  2
 #define OPTIX_BUILD_FLAG_PREFER_FAST_TRACE 4
 #define OPTIX_PROPERTY_TYPE_COMPACTED_SIZE 0x2181
@@ -64,6 +67,10 @@ using OptixDenoiserStructPtr = void*;
 #define OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS 1
 #define OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING (1u << 1)
 
+#define OPTIX_TRAVERSABLE_TYPE_STATIC_TRANSFORM 0x21C1
+#define OPTIX_TRAVERSABLE_TYPE_MATRIX_MOTION_TRANSFORM 0x21C2
+#define OPTIX_TRAVERSABLE_TYPE_SRT_MOTION_TRANSFORM 0x21C3
+
 #define OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM   (1 << 0)
 #define OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE (1 << 31)
 
@@ -72,6 +79,10 @@ using OptixDenoiserStructPtr = void*;
 
 #define OPTIX_INSTANCE_FLAG_NONE              0
 #define OPTIX_INSTANCE_FLAG_DISABLE_TRANSFORM (1u << 6)
+
+#define OPTIX_MOTION_FLAG_NONE         0
+#define OPTIX_MOTION_FLAG_START_VANISH (1u << 0)
+#define OPTIX_MOTION_FLAG_END_VANISH   (1u << 1)
 
 #define OPTIX_RAY_FLAG_NONE                   0
 #define OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT (1u << 2)
@@ -333,6 +344,8 @@ struct OptixDenoiserLayer {
 D(optixAccelComputeMemoryUsage, OptixDeviceContext,
   const OptixAccelBuildOptions *, const OptixBuildInput *, unsigned int,
   OptixAccelBufferSizes *);
+D(optixConvertPointerToTraversableHandle, OptixDeviceContext,
+  CUdeviceptr, OptixTraversableType, OptixTraversableHandle *);
 D(optixAccelBuild, OptixDeviceContext, CUstream, const OptixAccelBuildOptions *,
   const OptixBuildInput *, unsigned int, CUdeviceptr, size_t, CUdeviceptr,
   size_t, OptixTraversableHandle *, const OptixAccelEmitDesc *, unsigned int);

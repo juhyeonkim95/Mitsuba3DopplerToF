@@ -339,7 +339,8 @@ void Shape<Float, Spectrum>::optix_fill_hitgroup_records(std::vector<HitGroupSbt
 MI_VARIANT void Shape<Float, Spectrum>::optix_prepare_ias(const OptixDeviceContext& /*context*/,
                                                            std::vector<OptixInstance>& /*instances*/,
                                                            uint32_t /*instance_id*/,
-                                                           const ScalarTransform4f& /*transf*/) {
+                                                           const ScalarTransform4f& /*transf*/,
+                                                           const ref<AnimatedTransform>& /*animated_transf*/) {
     NotImplementedError("optix_prepare_ias");
 }
 

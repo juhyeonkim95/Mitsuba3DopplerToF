@@ -448,53 +448,37 @@ public:
 
         DRJIT_MARK_USED(time);
         DRJIT_MARK_USED(active);
-        return Transform<Point<T, 4>>(m_transform.matrix);
+        // return Transform<Point<T, 4>>(m_transform.matrix);
 
         // TODO
-        // // Perhaps the transformation isn't animated
-        // if (likely(size() <= 1))
-        //     return Transform<Point<T, 4>>(m_transform.matrix);
+        // Perhaps the transformation isn't animated
+        if (likely(size() <= 1))
+            return Transform<Point<T, 4>>(m_transform.matrix);
 
-        // // Look up the interval containing 'time'
-        // Index idx0 = math::find_interval(
-        //     (uint32_t) size(),
-        //     [&](Index idx) {
-        //         constexpr size_t Stride_ = sizeof(Keyframe); // MSVC: have to redeclare constexpr variable in lambda scope :(
-        //         return dr::gather<Value, Stride_>(m_keyframes.data(), idx, active) < time;
-        //     });
+        // Compute the relative time value in [0, 1]
+        Value t0 = m_keyframes[0].time,
+              t1 = m_keyframes[1].time,
+              t  = dr::minimum(dr::maximum((time - t0) / (t1 - t0), 0.f), 1.f);
 
-        // Index idx1 = idx0 + 1;
+        // Interpolate the scale matrix
+        Matrix3f scale0 = m_keyframes[0].scale,
+                 scale1 = m_keyframes[1].scale,
+                 scale  = scale0 * (1 - t) + scale1 * t;
 
-        // // Compute constants describing the layout of the 'Keyframe' data structure
-        // constexpr size_t Stride      = sizeof(Keyframe);
-        // constexpr size_t ScaleOffset = offsetof(Keyframe, scale) / sizeof(Float);
-        // constexpr size_t QuatOffset  = offsetof(Keyframe, quat)  / sizeof(Float);
-        // constexpr size_t TransOffset = offsetof(Keyframe, trans) / sizeof(Float);
+        // Interpolate the rotation quaternion
+        Quaternion4f quat0 = m_keyframes[0].quat,
+                     quat1 = m_keyframes[1].quat,
+                     quat = dr::slerp(quat0, quat1, t);
 
-        // // Compute the relative time value in [0, 1]
-        // Value t0 = dr::gather<Value, Stride, false>(m_keyframes.data(), idx0, active),
-        //       t1 = dr::gather<Value, Stride, false>(m_keyframes.data(), idx1, active),
-        //       t  = dr::minimum(dr::maximum((time - t0) / (t1 - t0), 0.f), 1.f);
+        // Interpolate the translation component
+        Vector3f trans0 = m_keyframes[0].trans,
+                 trans1 = m_keyframes[1].trans,
+                 trans = trans0 * (1 - t) + trans1 * t;
 
-        // // Interpolate the scale matrix
-        // Matrix3f scale0 = dr::gather<Matrix3f, Stride, false>((Float *) m_keyframes.data() + ScaleOffset, idx0, active),
-        //          scale1 = dr::gather<Matrix3f, Stride, false>((Float *) m_keyframes.data() + ScaleOffset, idx1, active),
-        //          scale  = scale0 * (1 - t) + scale1 * t;
-
-        // // Interpolate the rotation quaternion
-        // Quaternion4f quat0 = dr::gather<Quaternion4f, Stride, false>((Float *) m_keyframes.data() + QuatOffset, idx0, active),
-        //              quat1 = dr::gather<Quaternion4f, Stride, false>((Float *) m_keyframes.data() + QuatOffset, idx1, active),
-        //              quat = dr::slerp(quat0, quat1, t);
-
-        // // Interpolate the translation component
-        // Vector3f trans0 = dr::gather<Vector3f, Stride, false>((Float *) m_keyframes.data() + TransOffset, idx0, active),
-        //          trans1 = dr::gather<Vector3f, Stride, false>((Float *) m_keyframes.data() + TransOffset, idx1, active),
-        //          trans = trans0 * (1 - t) + trans1 * t;
-
-        // return Transform<Point<T, 4>>(
-        //     dr::transform_compose<Matrix4f>(scale, quat, trans),
-        //     dr::transform_compose_inverse<Matrix4f>(scale, quat, trans)
-        // );
+        return Transform<Point<T, 4>>(
+            dr::transform_compose<Matrix4f>(scale, quat, trans),
+            dr::transform_compose_inverse<Matrix4f>(scale, quat, trans)
+        );
     }
 
     /**

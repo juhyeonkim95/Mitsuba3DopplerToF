@@ -184,6 +184,7 @@ void prepare_ias(const OptixDeviceContext &context,
                  const OptixAccelData &accel,
                  uint32_t instance_id,
                  const Transform4f& transf,
+                 const ref<AnimatedTransform>& animated_transf,
                  std::vector<OptixInstance> &out_instances) {
     unsigned int sbt_offset = base_sbt_offset;
 
@@ -195,19 +196,83 @@ void prepare_ias(const OptixDeviceContext &context,
                     (float) transf.matrix(2, 2), (float) transf.matrix(2, 3) };
 
     // Check whether transformation should be disabled on the IAS
-    uint32_t flags = (transf == Transform4f())
+    uint32_t flags = (transf == Transform4f() && !(animated_transf.get()))
                          ? OPTIX_INSTANCE_FLAG_DISABLE_TRANSFORM
                          : OPTIX_INSTANCE_FLAG_NONE;
-
+    
     // Create an OptixInstance for the meshes if necessary
     if (accel.meshes.handle) {
-        OptixInstance meshes_instance = {
-            { T[0], T[1], T[2], T[3], T[4], T[5], T[6], T[7], T[8], T[9], T[10], T[11] },
-            instance_id, sbt_offset, /* visibilityMask = */ 255,
-            flags, accel.meshes.handle, /* pads = */ { 0, 0 }
-        };
-        out_instances.push_back(meshes_instance);
-        sbt_offset += (unsigned int) accel.meshes.count;
+    
+        if(animated_transf.get()){
+            std::cout << flags << std::endl;
+            std::cout << "Mesh Animation!" << std::endl;
+            Transform4f start = animated_transf->eval(0.0);
+            Transform4f end   = animated_transf->eval(1.0);
+
+            float matrix_keys[2][12] = {
+                { (float) start.matrix(0, 0), (float) start.matrix(0, 1),
+                    (float) start.matrix(0, 2), (float) start.matrix(0, 3),
+                    (float) start.matrix(1, 0), (float) start.matrix(1, 1),
+                    (float) start.matrix(1, 2), (float) start.matrix(1, 3),
+                    (float) start.matrix(2, 0), (float) start.matrix(2, 1),
+                    (float) start.matrix(2, 2), (float) start.matrix(2, 3) },
+                { (float) end.matrix(0, 0), (float) end.matrix(0, 1),
+                    (float) end.matrix(0, 2), (float) end.matrix(0, 3),
+                    (float) end.matrix(1, 0), (float) end.matrix(1, 1),
+                    (float) end.matrix(1, 2), (float) end.matrix(1, 3),
+                    (float) end.matrix(2, 0), (float) end.matrix(2, 1),
+                    (float) end.matrix(2, 2), (float) end.matrix(2, 3) }};
+            
+            std::cout << start << std::endl;
+            std::cout << end << std::endl;
+            
+            size_t transformSizeInBytes = sizeof(OptixMatrixMotionTransform);
+            OptixMatrixMotionTransform *matrix_motion_transform = (OptixMatrixMotionTransform*) malloc(transformSizeInBytes);
+            // ;
+            // OptixMatrixMotionTransform *transform = 
+    
+            matrix_motion_transform->motionOptions.numKeys = 2;
+            matrix_motion_transform->motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+            matrix_motion_transform->motionOptions.timeBegin = 0.0;
+            matrix_motion_transform->motionOptions.timeEnd = 1.0;
+            matrix_motion_transform->child = accel.meshes.handle;
+            memcpy(matrix_motion_transform->transform, matrix_keys, 2 * 12 * sizeof(float) );
+            for(int i=0; i<12; i++){
+                std::cout << matrix_motion_transform->transform[0][i] << std::endl;
+                std::cout << matrix_motion_transform->transform[1][i] << std::endl;
+            }
+
+            OptixTraversableHandle     m_matrixMotionTransformHandle;
+
+            void* d_matrix_motion_transform = jit_malloc(AllocType::HostPinned, sizeof(OptixMatrixMotionTransform));
+            jit_memcpy_async(JitBackend::CUDA, d_matrix_motion_transform, matrix_motion_transform, sizeof(OptixMatrixMotionTransform));
+            
+            jit_optix_check(optixConvertPointerToTraversableHandle(
+                context,
+                (CUdeviceptr) jit_malloc_migrate(d_matrix_motion_transform, AllocType::Device, 1),
+                OPTIX_TRAVERSABLE_TYPE_MATRIX_MOTION_TRANSFORM,
+                &m_matrixMotionTransformHandle
+            ));
+            OptixInstance meshes_instance = {
+                { T[0], T[1], T[2], T[3], T[4], T[5], T[6], T[7], T[8], T[9], T[10], T[11] },
+                instance_id, sbt_offset, /* visibilityMask = */ 255,
+                flags, m_matrixMotionTransformHandle, /* pads = */ { 0, 0 }
+            };
+            out_instances.push_back(meshes_instance);
+            sbt_offset += (unsigned int) accel.meshes.count;
+            
+        } else {
+            OptixInstance meshes_instance = {
+                { T[0], T[1], T[2], T[3], T[4], T[5], T[6], T[7], T[8], T[9], T[10], T[11] },
+                instance_id, sbt_offset, /* visibilityMask = */ 255,
+                flags, accel.meshes.handle, /* pads = */ { 0, 0 }
+            };
+            out_instances.push_back(meshes_instance);
+            sbt_offset += (unsigned int) accel.meshes.count;
+        }
+
+        
+
     }
 
     // Create an OptixInstance for the custom shapes if necessary
@@ -217,13 +282,62 @@ void prepare_ias(const OptixDeviceContext &context,
             instance_id, sbt_offset, /* visibilityMask = */ 255,
             flags, accel.others.handle, /* pads = */ { 0, 0 }
         };
+        // out_instances.push_back(others_instance);
+
+
+        if(animated_transf.get()){
+
+            std::cout << "Others Animation!" << std::endl;
+            Transform4f start = animated_transf->eval(0.0);
+            Transform4f end   = animated_transf->eval(1.0);
+
+            float matrix_keys[2][12] = {
+                { (float) start.matrix(0, 0), (float) start.matrix(0, 1),
+                    (float) start.matrix(0, 2), (float) start.matrix(0, 3),
+                    (float) start.matrix(1, 0), (float) start.matrix(1, 1),
+                    (float) start.matrix(1, 2), (float) start.matrix(1, 3),
+                    (float) start.matrix(2, 0), (float) start.matrix(2, 1),
+                    (float) start.matrix(2, 2), (float) start.matrix(2, 3) },
+                { (float) end.matrix(0, 0), (float) end.matrix(0, 1),
+                    (float) end.matrix(0, 2), (float) end.matrix(0, 3),
+                    (float) end.matrix(1, 0), (float) end.matrix(1, 1),
+                    (float) end.matrix(1, 2), (float) end.matrix(1, 3),
+                    (float) end.matrix(2, 0), (float) end.matrix(2, 1),
+                    (float) end.matrix(2, 2), (float) end.matrix(2, 3) }};
+
+            OptixMatrixMotionTransform matrix_motion_transform;
+            matrix_motion_transform.motionOptions.numKeys = 2;
+            matrix_motion_transform.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+            matrix_motion_transform.motionOptions.timeBegin = 0;
+            matrix_motion_transform.motionOptions.timeEnd = 1;
+            matrix_motion_transform.child = accel.meshes.handle;
+            memcpy(matrix_motion_transform.transform, matrix_keys, 2 * 12 * sizeof(float) );
+
+            OptixTraversableHandle     matrix_motion_transform_handle;
+            void* matrix_motion_transform_pointer = jit_malloc(AllocType::Device, sizeof(OptixMatrixMotionTransform));
+            jit_memcpy_async(JitBackend::CUDA, matrix_motion_transform_pointer, &matrix_motion_transform, sizeof(OptixMatrixMotionTransform));
+
+            //cuMemcpyHtoD(m_d_matrixMotionTransform, &matrix_motion_transform, sizeof(OptixMatrixMotionTransform))
+            jit_optix_check(optixConvertPointerToTraversableHandle(
+                context,
+                (CUdeviceptr) matrix_motion_transform_pointer,
+                OPTIX_TRAVERSABLE_TYPE_MATRIX_MOTION_TRANSFORM,
+                &matrix_motion_transform_handle
+            ));
+
+            others_instance.traversableHandle = matrix_motion_transform_handle;
+            
+        } else {
+
+        }
+
         out_instances.push_back(others_instance);
     }
 
     // Apply the same process to every shape instances
     for (Shape* shape: shapes) {
         if (shape->is_instance())
-            shape->optix_prepare_ias(context, out_instances, jit_registry_get_id(JitBackend::CUDA, shape), transf);
+            shape->optix_prepare_ias(context, out_instances, jit_registry_get_id(JitBackend::CUDA, shape), transf, animated_transf);
     }
 }
 

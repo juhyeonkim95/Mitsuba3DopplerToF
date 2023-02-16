@@ -489,13 +489,17 @@ public:
      *
      * \param transf
      *     The current to_world transformation (should allow for recursive instancing).
+     * 
+     * \param animated_transf
+     *     The current to_world animated transform.
      *
      * The default implementation throws an exception.
      */
     virtual void optix_prepare_ias(const OptixDeviceContext& /*context*/,
                                    std::vector<OptixInstance>& /*instances*/,
                                    uint32_t /*instance_id*/,
-                                   const ScalarTransform4f& /*transf*/);
+                                   const ScalarTransform4f& /*transf*/,
+                                   const ref<AnimatedTransform>& /*animated_transf*/);
 
     /**
      * \brief Creates and appends the HitGroupSbtRecord(s) associated with this

@@ -18,6 +18,7 @@ void optix_initialize() {
     #define L(name) name = (decltype(name)) jit_optix_lookup(#name);
 
     L(optixAccelComputeMemoryUsage);
+    L(optixConvertPointerToTraversableHandle);
     L(optixAccelBuild);
     L(optixAccelCompact);
     L(optixModuleCreateFromPTXWithTasks);
