@@ -96,10 +96,11 @@ template <typename Float, typename Spectrum>
 class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, 
-    m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth)
+    m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth, m_is_doppler_integrator)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
     DopplerPathIntegrator(const Properties &props) : Base(props) {
+        m_is_doppler_integrator = true;
         m_time = props.get<ScalarFloat>("time", 0.0015f);
 
         m_illumination_modulation_frequency_mhz = props.get<ScalarFloat>("w_g", 30.0f);
