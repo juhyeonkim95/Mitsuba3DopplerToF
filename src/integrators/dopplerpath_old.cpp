@@ -1,4 +1,4 @@
-#include <tuple>
+#include <random>
 #include <mitsuba/core/ray.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/render/bsdf.h>
@@ -6,98 +6,19 @@
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
 
-#ifndef WAVE_TYPE_SINUSOIDAL
-#define WAVE_TYPE_SINUSOIDAL 0
-#define WAVE_TYPE_RECTANGULAR 1
-#define WAVE_TYPE_TRIANGULAR 2
-#define WAVE_TYPE_SAWTOOTH 3
-#define WAVE_TYPE_TRAPEZOIDAL 4
-#endif
-
 NAMESPACE_BEGIN(mitsuba)
-
-/**!
-
-.. _integrator-path:
-
-Path tracer (:monosp:`path`)
-----------------------------
-
-.. pluginparameters::
-
- * - max_depth
-   - |int|
-   - Specifies the longest path depth in the generated output image (where -1
-     corresponds to :math:`\infty`). A value of 1 will only render directly
-     visible light sources. 2 will lead to single-bounce (direct-only)
-     illumination, and so on. (Default: -1)
-
- * - rr_depth
-   - |int|
-   - Specifies the path depth, at which the implementation will begin to use
-     the *russian roulette* path termination criterion. For example, if set to
-     1, then path generation many randomly cease after encountering directly
-     visible surfaces. (Default: 5)
-
- * - hide_emitters
-   - |bool|
-   - Hide directly visible emitters. (Default: no, i.e. |false|)
-
-This integrator implements a basic path tracer and is a **good default choice**
-when there is no strong reason to prefer another method.
-
-To use the path tracer appropriately, it is instructive to know roughly how
-it works: its main operation is to trace many light paths using *random walks*
-starting from the sensor. A single random walk is shown below, which entails
-casting a ray associated with a pixel in the output image and searching for
-the first visible intersection. A new direction is then chosen at the intersection,
-and the ray-casting step repeats over and over again (until one of several
-stopping criteria applies).
-
-.. image:: ../../resources/data/docs/images/integrator/integrator_path_figure.png
-    :width: 95%
-    :align: center
-
-At every intersection, the path tracer tries to create a connection to
-the light source in an attempt to find a *complete* path along which
-light can flow from the emitter to the sensor. This of course only works
-when there is no occluding object between the intersection and the emitter.
-
-This directly translates into a category of scenes where a path tracer can be
-expected to produce reasonable results: this is the case when the emitters are
-easily "accessible" by the contents of the scene. For instance, an interior
-scene that is lit by an area light will be considerably harder to render when
-this area light is inside a glass enclosure (which effectively counts as an
-occluder).
-
-Like the :ref:`direct <integrator-direct>` plugin, the path tracer internally
-relies on multiple importance sampling to combine BSDF and emitter samples. The
-main difference in comparison to the former plugin is that it considers light
-paths of arbitrary length to compute both direct and indirect illumination.
-
-.. note:: This integrator does not handle participating media
-
-.. tabs::
-    .. code-tab::  xml
-        :name: path-integrator
-
-        <integrator type="path">
-            <integer name="max_depth" value="8"/>
-        </integrator>
-
-    .. code-tab:: python
-
-        'type': 'path',
-        'max_depth': 8
-
- */
 
 template <typename Float, typename Spectrum>
 class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
+protected:
+    enum class PathLenghImportanceFunctionType{
+        Rect,
+        Step
+    };
 public:
-    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, 
-    m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth)
+    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
+
 
     DopplerPathIntegrator(const Properties &props) : Base(props) {
         m_time = props.get<ScalarFloat>("time", 0.0015f);
@@ -107,110 +28,51 @@ public:
         m_illumination_modulation_offset = props.get<ScalarFloat>("g_0", 0.5f);
 
         m_sensor_modulation_frequency_mhz = props.get<ScalarFloat>("w_f", 30.0f);
-        m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", 1.0f);
         m_sensor_modulation_frequency_mhz = m_illumination_modulation_frequency_mhz + 1 / m_time * 1e-6;
-
-        m_sensor_modulation_function_type = props.get<uint32_t>("sensor_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
-        m_illumination_modulation_function_type = props.get<uint32_t>("illumination_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
 
         m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
         m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
         m_sensor_modulation_phase_offset = props.get<ScalarFloat>("f_phase_offset", 0.0f);
+
+
         m_low_frequency_component_only = props.get<bool>("low_frequency_component_only", true);
-        m_use_path_correlation = props.get<bool>("use_path_correlation", true);
-    }
 
-    Float evalModulationFunctionValue(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: return dr::select(dr::abs(t-M_PI) > 0.5 * M_PI, 1, -1); //return dr::sign(dr::cos(t));
-            case WAVE_TYPE_TRIANGULAR: return dr::select(t < M_PI, 1 - 2 * t / M_PI, -3 + 2 * t / M_PI);
-        }
-        return dr::cos(t);
-    }
-
-    Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: {
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return 2 - 4 * c; //a < 1 ? 1 - 2 * a : 1 - 2 * b;
-            }
-            case WAVE_TYPE_TRIANGULAR: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return (4 * c * c * c - 6 * c * c + 1) * 2.0 / 3.0;
-            }
-            case WAVE_TYPE_TRAPEZOIDAL: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                Float r = 2 - 4 * c;
-                return dr::clamp(2.0 * r, -2.0, 2.0);
-            }
-        }
-        return dr::cos(t);
     }
 
     Float evalModulationWeight(Float ray_time, Float path_length) const
     {
         Float w_g = 2 * M_PI * m_illumination_modulation_frequency_mhz * 1e6;
-        Float w_d = 2 * M_PI / m_time * m_hetero_frequency;
+        Float w_f = 2 * M_PI * m_sensor_modulation_frequency_mhz * 1e6;
 
+        Float w_d = 2 * M_PI / m_time;
+
+        // Float delta_t = path_length / (3e8);
         Float phi = (2 * M_PI * m_illumination_modulation_frequency_mhz) / 300 * path_length;
-        
-        // Float fg_t = 0.25 * dr::cos(w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi);
-        // return fg_t;
 
         if(m_low_frequency_component_only){
-            Float t = w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi;
-            Float fg_t = 0.25 * evalModulationFunctionValueLowPass(t, m_sensor_modulation_function_type);
+            Float fg_t = 0.25 * dr::cos(w_d * ray_time + phi);
             return fg_t;
-        }
+        } 
         
-        Float modulation_illumination_t = w_g * ray_time - phi;
-        Float modulation_sensor_t = (w_g + w_d) * ray_time  + 2 * M_PI * m_sensor_modulation_phase_offset;
-        
-        Float modulation_illumination = 0.5 * evalModulationFunctionValue(modulation_illumination_t, m_illumination_modulation_function_type) + 0.5;
-        Float modulation_sensor = evalModulationFunctionValue(modulation_sensor_t, m_sensor_modulation_function_type);
-        return modulation_illumination * modulation_sensor;
+        Float g_t = 0.5 * dr::cos(w_g * ray_time - phi) + 0.5;
+        Float f_t = dr::cos(w_f * ray_time);
+        return f_t * g_t;
     }
 
     std::pair<Spectrum, Bool> sample(const Scene *scene,
                                      Sampler *sampler,
                                      const RayDifferential3f &ray_,
-                                     const Medium * medium,
-                                     Float * aovs,
+                                     const Medium * /* medium */,
+                                     Float * /* aovs */,
                                      Bool active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
-        auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, ray_.time);
-        return {
-            spec, mask
-        };
-    }
-
-    std::pair<Spectrum, Bool> sample_helper(const Scene *scene,
-                                     Sampler *sampler,
-                                     const RayDifferential3f &ray_,
-                                     const Medium * /* medium */,
-                                     Float * /* aovs */,
-                                     Bool active,
-                                     Float ray_time) const {
         if (unlikely(m_max_depth == 0))
             return { 0.f, false };
 
         // --------------------- Configure loop state ----------------------
 
         Ray3f ray                     = Ray3f(ray_);
-        ray.time = ray_time;
-        ray.time = dr::select(ray.time < m_time, ray.time, ray.time - m_time);
-
         Spectrum throughput           = 1.f;
         Spectrum result               = 0.f;
         Float path_length             = 0.f;
@@ -225,6 +87,16 @@ public:
         Float         prev_bsdf_pdf   = 1.f;
         Bool          prev_bsdf_delta = true;
         BSDFContext   bsdf_ctx;
+        
+
+        // antithetic sample
+        Ray3f ray2 = Ray3f(ray_);
+        ray2.time = dr::select(ray.time < m_time * 0.5, ray.time + m_time * 0.5, ray.time - m_time * 0.5);
+        Float path_length2 = 0;
+        Spectrum throughput2           = 1.f;
+        Interaction3f prev_si2         = dr::zeros<Interaction3f>();
+        Float         prev_bsdf_pdf2   = 1.f;
+        Bool          prev_bsdf_delta2 = true;
 
 
         /* Set up a Dr.Jit loop. This optimizes away to a normal loop in scalar
@@ -237,9 +109,9 @@ public:
            debugging. The subsequent list registers all variables that encode
            the loop state variables. This is crucial: omitting a variable may
            lead to undefined behavior. */
-        dr::Loop<Bool> loop("Path Tracer", sampler, ray, throughput, result,
+        dr::Loop<Bool> loop("Time Gated Path Tracer", sampler, ray, throughput, result,
                             eta, depth, valid_ray, prev_si, prev_bsdf_pdf,
-                            prev_bsdf_delta, active, path_length);
+                            prev_bsdf_delta, active, path_length, ray2, throughput2, path_length2, prev_si2, prev_bsdf_pdf2, prev_bsdf_delta2);
 
         /* Inform the loop about the maximum number of loop iterations.
            This accelerates wavefront-style rendering by avoiding costly
@@ -247,8 +119,6 @@ public:
         loop.set_max_iterations(m_max_depth);
         
         while (loop(active)) {
-            Bool correlate = (depth + 1) < m_path_correlation_depth;
-            
             /* dr::Loop implicitly masks all code in the loop using the 'active'
                flag, so there is no need to pass it to every function */
 
@@ -256,8 +126,24 @@ public:
                 scene->ray_intersect(ray,
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
-            
+
+            SurfaceInteraction3f si2 =
+            scene->ray_intersect(ray2,
+                                    /* ray_flags = */ +RayFlags::All,
+                                    /* coherent = */ dr::eq(depth, 0u));
+            //valid_ray |= active && si2.is_valid();
+            //result = si2.t - si.t;
+            //break;
+
+            //SurfaceInteraction3f si2 = si.adjust_time(ray2.time);
+            //si2.t = (prev_si2.p - si2.p).length();
+
             path_length += dr::select(si.is_valid(), si.t, 0);
+            path_length2 += dr::select(si2.is_valid(), si2.t, 0);
+
+            // valid_ray |= active && si2.is_valid();
+            // result = path_length - path_length2;
+            // break;
 
             // ---------------------- Direct emission ----------------------
 
@@ -276,14 +162,32 @@ public:
 
                 // Compute MIS weight for emitter sample from previous bounce
                 Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
+                
                 Float length_weight = evalModulationWeight(ray.time, path_length);
 
+                // Accumulate, being careful with polarization (see spec_fma)
+                // result = spec_fma(
+                //     throughput,
+                //     ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf * length_weight,
+                //     result);
+                
+                DirectionSample3f ds2(scene, si2, prev_si2);
+                Float em_pdf2 = 0.f;
+
+                if (dr::any_or<true>(!prev_bsdf_delta2))
+                    em_pdf2 = scene->pdf_emitter_direction(prev_si2, ds2,
+                                                          !prev_bsdf_delta2);
+
+                // Compute MIS weight for emitter sample from previous bounce
+                Float mis_bsdf2 = mis_weight(prev_bsdf_pdf2, em_pdf2);
+                
+                Float length_weight2 = evalModulationWeight(ray2.time, path_length2);
 
                 // Accumulate, being careful with polarization (see spec_fma)
-                result = spec_fma(
-                    throughput,
-                    ds.emitter->eval(si, prev_bsdf_pdf > 0.f) * mis_bsdf * length_weight,
-                    result);
+                // result = spec_fma(
+                //     throughput2,
+                //     ds2.emitter->eval(si2, prev_bsdf_pdf2 > 0.f) * mis_bsdf2 * length_weight2,
+                //     result);
             }
 
             // Continue tracing the path at this point?
@@ -292,22 +196,17 @@ public:
             if (dr::none_or<false>(active_next))
                 break; // early exit for scalar mode
 
-            BSDFPtr bsdf = si.bsdf(ray);
-
             // ---------------------- Emitter sampling ----------------------
 
             // Perform emitter sampling?
+            BSDFPtr bsdf = si.bsdf(ray);
             Mask active_em = active_next && has_flag(bsdf->flags(), BSDFFlags::Smooth);
-
-            DirectionSample3f ds = dr::zeros<DirectionSample3f>();
-            Spectrum em_weight = dr::zeros<Spectrum>();
-            Vector3f wo = dr::zeros<Vector3f>();
 
             if (dr::any_or<true>(active_em)) {
                 // Sample the emitter
-                std::tie(ds, em_weight) = scene->sample_emitter_direction(
-                    si, sampler->next_2d_correlate(active, correlate), true, active_em);
-                active_em &= dr::neq(ds.pdf, 0.f);
+                auto [ds, em_weight] = scene->sample_emitter_direction(
+                    si, sampler->next_2d(), true, active_em);
+                // active_em &= dr::neq(ds.pdf, 0.f);
 
                 /* Given the detached emitter sample, recompute its contribution
                    with AD to enable light source optimization. */
@@ -317,38 +216,45 @@ public:
                     em_weight = dr::select(dr::neq(ds.pdf, 0), em_val / ds.pdf, 0);
                 }
 
-                wo = si.to_local(ds.d);
-            }
-
-            // result[active_em] = Float(1.5);
-            // break;
-
-            // ------ Evaluate BSDF * cos(theta) and sample direction -------
-
-            Float sample_1 = sampler->next_1d_correlate(active, correlate);
-            Point2f sample_2 = sampler->next_2d_correlate(active, correlate);
-
-            auto [bsdf_val, bsdf_pdf, bsdf_sample, bsdf_weight]
-                = bsdf->eval_pdf_sample(bsdf_ctx, si, wo, sample_1, sample_2);
-
-            // --------------- Emitter sampling contribution ----------------
-
-            if (dr::any_or<true>(active_em)) {
+                // Evaluate BSDF * cos(theta)
+                Vector3f wo = si.to_local(ds.d);
+                auto [bsdf_val, bsdf_pdf] =
+                    bsdf->eval_pdf(bsdf_ctx, si, wo, active_em);
                 bsdf_val = si.to_world_mueller(bsdf_val, -wo, si.wi);
 
                 // Compute the MIS weight
                 Float mis_em =
                     dr::select(ds.delta, 1.f, mis_weight(ds.pdf, bsdf_pdf));
+
+                // compute path length
                 Float em_path_length = path_length + ds.dist;
-                Float length_weight = evalModulationWeight(ray.time, em_path_length);
+                
+                Float length_weight = evalModulationWeight(ray.time, path_length * 2);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(
                     throughput, bsdf_val * em_weight * mis_em * length_weight, result);
+
+                // compute path length
+                Float em_path_length2 = path_length2 + dr::select(si2.is_valid(), dr::norm(ds.p - si2.p), 0);
+                
+                Float length_weight2 = evalModulationWeight(ray2.time, path_length2 * 2);
+
+                // Accumulate, being careful with polarization (see spec_fma)
+                result[active_em] = spec_fma(
+                    throughput, bsdf_val * em_weight * mis_em * length_weight2, result);
+                // result = length_weight + length_weight2;
+                // result[active_em] = 10;
+                break;
             }
 
             // ---------------------- BSDF sampling ----------------------
 
+            Float sample_1 = sampler->next_1d();
+            Point2f sample_2 = sampler->next_2d();
+
+            auto [bsdf_sample, bsdf_weight] =
+                bsdf->sample(bsdf_ctx, si, sample_1, sample_2, active_next);
             bsdf_weight = si.to_world_mueller(bsdf_weight, -bsdf_sample.wo, si.wi);
 
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo));
@@ -362,17 +268,19 @@ public:
                 ray = dr::detach<true>(ray);
 
                 // Recompute 'wo' to propagate derivatives to cosine term
-                Vector3f wo_2 = si.to_local(ray.d);
-                auto [bsdf_val_2, bsdf_pdf_2] = bsdf->eval_pdf(bsdf_ctx, si, wo_2, active);
-                bsdf_weight[bsdf_pdf_2 > 0.f] = bsdf_val_2 / dr::detach(bsdf_pdf_2);
+                Vector3f wo = si.to_local(ray.d);
+                auto [bsdf_val, bsdf_pdf] = bsdf->eval_pdf(bsdf_ctx, si, wo, active);
+                bsdf_weight[bsdf_pdf > 0.f] = bsdf_val / dr::detach(bsdf_pdf);
             }
 
             // ------ Update loop variables based on current interaction ------
 
+            
             throughput *= bsdf_weight;
             eta *= bsdf_sample.eta;
             valid_ray |= active && si.is_valid() &&
                          !has_flag(bsdf_sample.sampled_type, BSDFFlags::Null);
+
 
             // Information about the current vertex needed by the next iteration
             prev_si = si;
@@ -387,7 +295,7 @@ public:
 
             Float rr_prob = dr::minimum(throughput_max * dr::sqr(eta), .95f);
             Mask rr_active = depth >= m_rr_depth,
-                 rr_continue = sampler->next_1d_correlate(active, correlate) < rr_prob;
+                 rr_continue = sampler->next_1d() < rr_prob;
 
             /* Differentiable variants of the renderer require the the russian
                roulette sampling weight to be detached to avoid bias. This is a
@@ -399,7 +307,7 @@ public:
         }
 
         return {
-            /* spec  = */ dr::select(valid_ray, result, 0.f),
+            /* spec  = */ result,//dr::select(valid_ray, result, -1.f),
             /* valid = */ valid_ray
         };
     }
@@ -408,7 +316,7 @@ public:
     // =============================================================
 
     std::string to_string() const override {
-        return tfm::format("PathIntegrator[\n"
+        return tfm::format("DopplerPathIntegrator[\n"
             "  max_depth = %u,\n"
             "  rr_depth = %u\n"
             "]", m_max_depth, m_rr_depth);
@@ -433,7 +341,6 @@ public:
         else
             return dr::fmadd(a, b, c);
     }
-
     MI_DECLARE_CLASS()
 private:
     //ScalarFloat m_tau_ps;
@@ -447,13 +354,8 @@ private:
     ScalarFloat m_sensor_modulation_offset;
     ScalarFloat m_sensor_modulation_phase_offset;
     ScalarFloat m_time;
-    ScalarFloat m_hetero_frequency;
+
     bool m_low_frequency_component_only;
-    bool m_use_path_correlation;
-
-
-    uint32_t m_sensor_modulation_function_type;
-    uint32_t m_illumination_modulation_function_type;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(DopplerPathIntegrator, MonteCarloIntegrator)

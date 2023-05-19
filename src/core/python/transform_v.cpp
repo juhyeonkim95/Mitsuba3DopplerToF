@@ -297,17 +297,19 @@ MI_PY_EXPORT(AnimatedTransform) {
     using _Matrix3f     = typename AnimatedTransform::Matrix3f;
     using _Quaternion4f = typename AnimatedTransform::Quaternion4f;
     using _Vector3f     = typename AnimatedTransform::Vector3f;
+    using _Matrix4f     = typename AnimatedTransform::Matrix4f;
     using _Transform4f  = typename AnimatedTransform::Transform4f;
 
     MI_PY_CHECK_ALIAS(AnimatedTransform, "AnimatedTransform") {
         auto atrafo = MI_PY_CLASS(AnimatedTransform, Object);
 
         py::class_<Keyframe>(atrafo, "Keyframe")
-            .def(py::init<float, _Matrix3f, _Quaternion4f, _Vector3f>())
+            .def(py::init<float, _Matrix3f, _Quaternion4f, _Vector3f, _Matrix4f>())
             .def_readwrite("time",  &Keyframe::time,  D(AnimatedTransform, Keyframe, time))
             .def_readwrite("scale", &Keyframe::scale, D(AnimatedTransform, Keyframe, scale))
             .def_readwrite("quat",  &Keyframe::quat,  D(AnimatedTransform, Keyframe, quat))
-            .def_readwrite("trans", &Keyframe::trans, D(AnimatedTransform, Keyframe, trans));
+            .def_readwrite("trans", &Keyframe::trans, D(AnimatedTransform, Keyframe, trans))
+            .def_readwrite("transform", &Keyframe::transform, D(AnimatedTransform, Keyframe, transform));
 
         atrafo.def(py::init<>())
             .def(py::init<const _Transform4f &>())

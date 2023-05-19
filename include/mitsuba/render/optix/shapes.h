@@ -226,8 +226,8 @@ void prepare_ias(const OptixDeviceContext &context,
                     (float) end.matrix(2, 0), (float) end.matrix(2, 1),
                     (float) end.matrix(2, 2), (float) end.matrix(2, 3) }};
             
-            std::cout << start << std::endl;
-            std::cout << end << std::endl;
+            //std::cout << start << std::endl;
+            //std::cout << end << std::endl;
             
             size_t transformSizeInBytes = sizeof(OptixMatrixMotionTransform);
             OptixMatrixMotionTransform *matrix_motion_transform = (OptixMatrixMotionTransform*) malloc(transformSizeInBytes);
@@ -294,8 +294,8 @@ void prepare_ias(const OptixDeviceContext &context,
                     (float) end.matrix(2, 0), (float) end.matrix(2, 1),
                     (float) end.matrix(2, 2), (float) end.matrix(2, 3) }};
             
-            std::cout << start << std::endl;
-            std::cout << end << std::endl;
+            //std::cout << start << std::endl;
+            //std::cout << end << std::endl;
             
             size_t transformSizeInBytes = sizeof(OptixMatrixMotionTransform);
             OptixMatrixMotionTransform *matrix_motion_transform = (OptixMatrixMotionTransform*) malloc(transformSizeInBytes);

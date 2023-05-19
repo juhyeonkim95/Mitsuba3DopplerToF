@@ -217,7 +217,7 @@ public:
 
     //! @}
     // =========================================================================
-
+    
     MI_DECLARE_CLASS()
 protected:
     SamplingIntegrator(const Properties &props);
@@ -254,6 +254,13 @@ protected:
      * If set to (uint32_t) -1, all the work is done in a single pass (default).
      */
     uint32_t m_samples_per_pass;
+
+    bool m_is_doppler_integrator;
+    uint32_t m_time_sampling_method;
+    uint32_t m_spatial_correlation_method;
+    uint32_t m_time_intervals;
+    ScalarFloat m_antithetic_shift;
+    uint32_t m_path_correlation_depth;
 };
 
 /** \brief Abstract integrator that performs *recursive* Monte Carlo sampling
@@ -282,6 +289,7 @@ protected:
     uint32_t m_max_depth;
     uint32_t m_rr_depth;
 };
+
 
 /** \brief Abstract adjoint integrator that performs Monte Carlo sampling
  * starting from the emitters.

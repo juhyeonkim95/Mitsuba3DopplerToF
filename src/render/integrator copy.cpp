@@ -70,14 +70,14 @@ MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Propert
     m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_ANTITHETIC);
     m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
     m_is_doppler_integrator = props.get<bool>("is_doppler_integrator", false);
-    
+
     ScalarFloat default_shift = 0.0;
     if(m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
         default_shift = 0.5;
     }
-    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
-    m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
 
+    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
+    m_time_samples_number = props.get<uint32_t>("n_time_samples", 2);
 
     m_block_size = props.get<uint32_t>("block_size", 0);
 
@@ -469,52 +469,135 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
 
         // With box filter, ignore random offset to prevent numerical instabilities
         block->put(box_filter ? pos : sample_pos, aovs, active);
-        return;
-    }
 
-    bool correlate_pixel = m_path_correlation_depth > 0;
-    // (m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL) || (m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER);
+    }
     
     const Film *film = sensor->film();
     const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
     const bool box_filter = film->rfilter()->is_box_filter();
 
     ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
-                offset = -ScalarVector2f(film->crop_offset()) * scale;
+                   offset = -ScalarVector2f(film->crop_offset()) * scale;
 
-    Vector2f sample_pos   = pos + sampler->next_2d_correlate(active, correlate_pixel),
+    Vector2f sample_pos   = pos + sampler->next_2d(active),
             adjusted_pos = dr::fmadd(sample_pos, scale, offset);
+    
+    const Medium *medium = sensor->medium();
+
 
     Point2f aperture_sample(.5f);
     if (sensor->needs_aperture_sample())
-        aperture_sample = sampler->next_2d_correlate(active, correlate_pixel);
+        aperture_sample = sampler->next_2d(active);
 
-    Float time = sensor->shutter_open();
-    if (sensor->shutter_open_time() > 0.f)
-        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift) * sensor->shutter_open_time();
+    Float time0 = sampler->next_1d(active);
 
     Float wavelength_sample = 0.f;
     if constexpr (is_spectral_v<Spectrum>)
-        wavelength_sample = sampler->next_1d_correlate(active, correlate_pixel);
+        wavelength_sample = sampler->next_1d(active);
 
+    Spectrum spec = 0.0;
+    Mask valid = true;
+    
+    ref<Sampler> sampler_path = sampler->clone();
+
+    
     auto [ray, ray_weight] = sensor->sample_ray_differential(
-        time, wavelength_sample, adjusted_pos, aperture_sample);
+                0.0, wavelength_sample, adjusted_pos, aperture_sample);
+    
+    uint32_t n = m_time_samples_number;
+    std::vector<ScalarFloat> antithetic_shifts;
 
-    if (ray.has_differentials)
-        ray.scale_differential(diff_scale_factor);
+    for(uint32_t i=0; i<n; i++){
+        std::cout << i << std::endl;
 
-    const Medium *medium = sensor->medium();
+        Float time;
+        if(m_time_sampling_method == TIME_SAMPLING_UNIFORM){
+            time = sampler->next_1d(active);
+        }
+        else if (m_time_sampling_method == TIME_SAMPLING_STRATIFIED){
+            time = (sampler->next_1d(active) + i) / n;
+        }
+        else if (m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
+            if(i == 0){
+                time = time0;
+            } else {
+                time = m_antithetic_shift + time0;
+            }
+        }
+        else if (m_time_sampling_method == TIME_SAMPLING_ANTITHETIC_MIRROR){
+            if(i == 0){
+                time = time0;
+            } else {
+                time = m_antithetic_shift + 1.0 - time0;
+            }
+        }
+        else if (m_time_sampling_method == TIME_SAMPLING_PERIODIC){
+            time = time0 + (1.0 * i) / n;
+        }
+        else if (m_time_sampling_method == TIME_SAMPLING_REGULAR){
+            time = (0.5 + 1.0 * i) / n;
+        }
 
-    auto [spec, valid] = sample(scene, sampler, ray, medium,
-            aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+        Float ray_time = sensor->shutter_open() + time * sensor->shutter_open_time();
+
+        if(m_spatial_correlation_method == SPATIAL_CORRELATION_NONE){
+
+            Vector2f sample_pos   = pos + sampler->next_2d(active),
+                adjusted_pos = dr::fmadd(sample_pos, scale, offset);
+            Point2f aperture_sample(.5f);
+            if (sensor->needs_aperture_sample())
+                aperture_sample = sampler->next_2d(active);
+            Float wavelength_sample = 0.f;
+            if constexpr (is_spectral_v<Spectrum>)
+                wavelength_sample = sampler->next_1d(active);
+
+            auto [ray, ray_weight] = sensor->sample_ray_differential(
+                ray_time, wavelength_sample, adjusted_pos, aperture_sample);
+
+            if (ray.has_differentials)
+                ray.scale_differential(diff_scale_factor);
+
+            auto [spec2, valid2] = sample(scene, sampler, ray, medium,
+                    aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+            spec += spec2;
+            valid &= valid2;
+        }
+        else if(m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL){
+            auto [ray, ray_weight] = sensor->sample_ray_differential(
+                ray_time, wavelength_sample, adjusted_pos, aperture_sample);
+
+            if (ray.has_differentials)
+                ray.scale_differential(diff_scale_factor);
+
+            auto [spec2, valid2] = sample(scene, sampler, ray, medium,
+                    aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+            spec += spec2;
+            valid &= valid2;
+        }
+        else if(m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER){
+            ref<Sampler> sampler_path_temp = sampler_path->clone();
+
+            auto [ray, ray_weight] = sensor->sample_ray_differential(
+                ray_time, wavelength_sample, adjusted_pos, aperture_sample);
+
+            if (ray.has_differentials)
+                ray.scale_differential(diff_scale_factor);
+
+            auto [spec2, valid2] = sample(scene, sampler_path_temp, ray, medium,
+                    aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+            spec += spec2;
+            valid &= valid2;
+        }
+    }
+
+    spec /= n;
 
     UnpolarizedSpectrum spec_u = unpolarized_spectrum(ray_weight * spec);
-
     if (unlikely(has_flag(film->flags(), FilmFlags::Special))) {
         film->prepare_sample(spec_u, ray.wavelengths, aovs,
-                            /*weight*/ 1.f,
-                            /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
-                            valid);
+                             /*weight*/ 1.f,
+                             /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
+                             valid);
     } else {
         Color3f rgb;
         if constexpr (is_spectral_v<Spectrum>)
@@ -538,7 +621,6 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
 
     // With box filter, ignore random offset to prevent numerical instabilities
     block->put(box_filter ? pos : sample_pos, aovs, active);
-    return;
 }
 
 MI_VARIANT std::pair<Spectrum, typename SamplingIntegrator<Float, Spectrum>::Mask>

@@ -15,18 +15,6 @@
 #include <mitsuba/render/spiral.h>
 #include <nanothread/nanothread.h>
 
-#ifndef TIME_SAMPLING_UNIFORM
-#define TIME_SAMPLING_UNIFORM 0
-#define TIME_SAMPLING_STRATIFIED 1
-#define TIME_SAMPLING_ANTITHETIC 2
-#define TIME_SAMPLING_ANTITHETIC_MIRROR 3
-#define TIME_SAMPLING_PERIODIC 4
-#define TIME_SAMPLING_REGULAR 5
-#define SPATIAL_CORRELATION_NONE 0
-#define SPATIAL_CORRELATION_PIXEL 1
-#define SPATIAL_CORRELATION_SAMPLER 2
-#endif
-
 NAMESPACE_BEGIN(mitsuba)
 
 // -----------------------------------------------------------------------------
@@ -65,19 +53,6 @@ MI_VARIANT void Integrator<Float, Spectrum>::cancel() {
 
 MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Properties &props)
     : Base(props) {
-
-        
-    m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_ANTITHETIC);
-    m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
-    m_is_doppler_integrator = props.get<bool>("is_doppler_integrator", false);
-    
-    ScalarFloat default_shift = 0.0;
-    if(m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
-        default_shift = 0.5;
-    }
-    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
-    m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
-
 
     m_block_size = props.get<uint32_t>("block_size", 0);
 
@@ -404,98 +379,27 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
                                                    const Vector2f &pos,
                                                    ScalarFloat diff_scale_factor,
                                                    Mask active) const {
-
-    if(!m_is_doppler_integrator){
-        const Film *film = sensor->film();
-        const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
-        const bool box_filter = film->rfilter()->is_box_filter();
-
-        ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
-                    offset = -ScalarVector2f(film->crop_offset()) * scale;
-
-        Vector2f sample_pos   = pos + sampler->next_2d(active),
-                adjusted_pos = dr::fmadd(sample_pos, scale, offset);
-
-        Point2f aperture_sample(.5f);
-        if (sensor->needs_aperture_sample())
-            aperture_sample = sampler->next_2d(active);
-
-        Float time = sensor->shutter_open();
-        if (sensor->shutter_open_time() > 0.f)
-            time += sampler->next_1d(active) * sensor->shutter_open_time();
-
-        Float wavelength_sample = 0.f;
-        if constexpr (is_spectral_v<Spectrum>)
-            wavelength_sample = sampler->next_1d(active);
-
-        auto [ray, ray_weight] = sensor->sample_ray_differential(
-            time, wavelength_sample, adjusted_pos, aperture_sample);
-
-        if (ray.has_differentials)
-            ray.scale_differential(diff_scale_factor);
-
-        const Medium *medium = sensor->medium();
-
-        auto [spec, valid] = sample(scene, sampler, ray, medium,
-                aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
-
-        UnpolarizedSpectrum spec_u = unpolarized_spectrum(ray_weight * spec);
-
-        if (unlikely(has_flag(film->flags(), FilmFlags::Special))) {
-            film->prepare_sample(spec_u, ray.wavelengths, aovs,
-                                /*weight*/ 1.f,
-                                /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
-                                valid);
-        } else {
-            Color3f rgb;
-            if constexpr (is_spectral_v<Spectrum>)
-                rgb = spectrum_to_srgb(spec_u, ray.wavelengths, active);
-            else if constexpr (is_monochromatic_v<Spectrum>)
-                rgb = spec_u.x();
-            else
-                rgb = spec_u;
-
-            aovs[0] = rgb.x();
-            aovs[1] = rgb.y();
-            aovs[2] = rgb.z();
-
-            if (likely(has_alpha)) {
-                aovs[3] = dr::select(valid, Float(1.f), Float(0.f));
-                aovs[4] = 1.f;
-            } else {
-                aovs[3] = 1.f;
-            }
-        }
-
-        // With box filter, ignore random offset to prevent numerical instabilities
-        block->put(box_filter ? pos : sample_pos, aovs, active);
-        return;
-    }
-
-    bool correlate_pixel = m_path_correlation_depth > 0;
-    // (m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL) || (m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER);
-    
     const Film *film = sensor->film();
     const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
     const bool box_filter = film->rfilter()->is_box_filter();
 
     ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
-                offset = -ScalarVector2f(film->crop_offset()) * scale;
+                   offset = -ScalarVector2f(film->crop_offset()) * scale;
 
-    Vector2f sample_pos   = pos + sampler->next_2d_correlate(active, correlate_pixel),
-            adjusted_pos = dr::fmadd(sample_pos, scale, offset);
+    Vector2f sample_pos   = pos + sampler->next_2d(active),
+             adjusted_pos = dr::fmadd(sample_pos, scale, offset);
 
     Point2f aperture_sample(.5f);
     if (sensor->needs_aperture_sample())
-        aperture_sample = sampler->next_2d_correlate(active, correlate_pixel);
+        aperture_sample = sampler->next_2d(active);
 
     Float time = sensor->shutter_open();
     if (sensor->shutter_open_time() > 0.f)
-        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift) * sensor->shutter_open_time();
+        time += sampler->next_1d(active) * sensor->shutter_open_time();
 
     Float wavelength_sample = 0.f;
     if constexpr (is_spectral_v<Spectrum>)
-        wavelength_sample = sampler->next_1d_correlate(active, correlate_pixel);
+        wavelength_sample = sampler->next_1d(active);
 
     auto [ray, ray_weight] = sensor->sample_ray_differential(
         time, wavelength_sample, adjusted_pos, aperture_sample);
@@ -506,15 +410,15 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
     const Medium *medium = sensor->medium();
 
     auto [spec, valid] = sample(scene, sampler, ray, medium,
-            aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+               aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
 
     UnpolarizedSpectrum spec_u = unpolarized_spectrum(ray_weight * spec);
 
     if (unlikely(has_flag(film->flags(), FilmFlags::Special))) {
         film->prepare_sample(spec_u, ray.wavelengths, aovs,
-                            /*weight*/ 1.f,
-                            /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
-                            valid);
+                             /*weight*/ 1.f,
+                             /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
+                             valid);
     } else {
         Color3f rgb;
         if constexpr (is_spectral_v<Spectrum>)
@@ -538,7 +442,6 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
 
     // With box filter, ignore random offset to prevent numerical instabilities
     block->put(box_filter ? pos : sample_pos, aovs, active);
-    return;
 }
 
 MI_VARIANT std::pair<Spectrum, typename SamplingIntegrator<Float, Spectrum>::Mask>

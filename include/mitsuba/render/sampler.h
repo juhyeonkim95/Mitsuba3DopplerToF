@@ -8,6 +8,18 @@
 #include <mitsuba/core/random.h>
 #include <drjit/loop.h>
 
+#ifndef TIME_SAMPLING_UNIFORM
+#define TIME_SAMPLING_UNIFORM 0
+#define TIME_SAMPLING_STRATIFIED 1
+#define TIME_SAMPLING_ANTITHETIC 2
+#define TIME_SAMPLING_ANTITHETIC_MIRROR 3
+#define TIME_SAMPLING_PERIODIC 4
+#define TIME_SAMPLING_REGULAR 5
+#define SPATIAL_CORRELATION_NONE 0
+#define SPATIAL_CORRELATION_PIXEL 1
+#define SPATIAL_CORRELATION_SAMPLER 2
+#endif
+
 NAMESPACE_BEGIN(mitsuba)
 
 /**
@@ -105,11 +117,23 @@ public:
     virtual void advance();
 
     /// Retrieve the next component value from the current sample
+    virtual Float next_1d_time(Mask active = true, int strategy = TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) { return next_1d(); }
+
+    /// Retrieve the next component value from the current sample
     virtual Float next_1d(Mask active = true);
 
     /// Retrieve the next two component values from the current sample
     virtual Point2f next_2d(Mask active = true);
 
+    /// Retrieve the next component value from the current sample
+    virtual Float next_1d_correlate(Mask active = true, Bool correlate = false) { return next_1d(active); };
+
+    /// Retrieve the next two component values from the current sample
+    virtual Point2f next_2d_correlate(Mask active = true, Bool correlate = false) { return next_2d(active); };
+
+    /// seed for time and path random generator
+    // virtual void seed_time_path(uint32_t seed, uint32_t time_correlate_number, uint32_t path_correlate_number);
+    
     /// Return the number of samples per pixel
     uint32_t sample_count() const { return m_sample_count; }
 

@@ -11,7 +11,6 @@
 #define WAVE_TYPE_RECTANGULAR 1
 #define WAVE_TYPE_TRIANGULAR 2
 #define WAVE_TYPE_SAWTOOTH 3
-#define WAVE_TYPE_TRAPEZOIDAL 4
 #endif
 
 NAMESPACE_BEGIN(mitsuba)
@@ -95,8 +94,7 @@ paths of arbitrary length to compute both direct and indirect illumination.
 template <typename Float, typename Spectrum>
 class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
 public:
-    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, 
-    m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth)
+    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, m_spatial_correlation_method, m_time_sampling_method, m_time_intervals)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
     DopplerPathIntegrator(const Properties &props) : Base(props) {
@@ -130,33 +128,6 @@ public:
         return dr::cos(t);
     }
 
-    Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: {
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return 2 - 4 * c; //a < 1 ? 1 - 2 * a : 1 - 2 * b;
-            }
-            case WAVE_TYPE_TRIANGULAR: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return (4 * c * c * c - 6 * c * c + 1) * 2.0 / 3.0;
-            }
-            case WAVE_TYPE_TRAPEZOIDAL: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                Float r = 2 - 4 * c;
-                return dr::clamp(2.0 * r, -2.0, 2.0);
-            }
-        }
-        return dr::cos(t);
-    }
-
     Float evalModulationWeight(Float ray_time, Float path_length) const
     {
         Float w_g = 2 * M_PI * m_illumination_modulation_frequency_mhz * 1e6;
@@ -168,8 +139,7 @@ public:
         // return fg_t;
 
         if(m_low_frequency_component_only){
-            Float t = w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi;
-            Float fg_t = 0.25 * evalModulationFunctionValueLowPass(t, m_sensor_modulation_function_type);
+            Float fg_t = 0.25 * dr::cos(w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi);
             return fg_t;
         }
         
@@ -226,7 +196,6 @@ public:
         Bool          prev_bsdf_delta = true;
         BSDFContext   bsdf_ctx;
 
-
         /* Set up a Dr.Jit loop. This optimizes away to a normal loop in scalar
            mode, and it generates either a a megakernel (default) or
            wavefront-style renderer in JIT variants. This can be controlled by
@@ -245,10 +214,10 @@ public:
            This accelerates wavefront-style rendering by avoiding costly
            synchronization points that check the 'active' flag. */
         loop.set_max_iterations(m_max_depth);
-        
+
         while (loop(active)) {
-            Bool correlate = (depth + 1) < m_path_correlation_depth;
-            
+            bool correlate = m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER;
+
             /* dr::Loop implicitly masks all code in the loop using the 'active'
                flag, so there is no need to pass it to every function */
 
@@ -306,7 +275,7 @@ public:
             if (dr::any_or<true>(active_em)) {
                 // Sample the emitter
                 std::tie(ds, em_weight) = scene->sample_emitter_direction(
-                    si, sampler->next_2d_correlate(active, correlate), true, active_em);
+                    si, sampler->next_2d_correlate(active, correlate, m_time_intervals), true, active_em);
                 active_em &= dr::neq(ds.pdf, 0.f);
 
                 /* Given the detached emitter sample, recompute its contribution
@@ -325,8 +294,8 @@ public:
 
             // ------ Evaluate BSDF * cos(theta) and sample direction -------
 
-            Float sample_1 = sampler->next_1d_correlate(active, correlate);
-            Point2f sample_2 = sampler->next_2d_correlate(active, correlate);
+            Float sample_1 = sampler->next_1d_correlate(active, correlate, m_time_intervals);
+            Point2f sample_2 = sampler->next_2d_correlate(active, correlate, m_time_intervals);
 
             auto [bsdf_val, bsdf_pdf, bsdf_sample, bsdf_weight]
                 = bsdf->eval_pdf_sample(bsdf_ctx, si, wo, sample_1, sample_2);
@@ -387,7 +356,7 @@ public:
 
             Float rr_prob = dr::minimum(throughput_max * dr::sqr(eta), .95f);
             Mask rr_active = depth >= m_rr_depth,
-                 rr_continue = sampler->next_1d_correlate(active, correlate) < rr_prob;
+                 rr_continue = sampler->next_1d_correlate(active, correlate, m_time_intervals) < rr_prob;
 
             /* Differentiable variants of the renderer require the the russian
                roulette sampling weight to be detached to avoid bias. This is a

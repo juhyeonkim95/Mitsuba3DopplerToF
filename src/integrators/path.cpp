@@ -147,7 +147,7 @@ public:
                 scene->ray_intersect(ray,
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
-            si = si.adjust_time(0.0);
+            // si = si.adjust_time(0.0);
 
             // ---------------------- Direct emission ----------------------
 

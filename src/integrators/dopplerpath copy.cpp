@@ -6,13 +6,12 @@
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
 
-#ifndef WAVE_TYPE_SINUSOIDAL
 #define WAVE_TYPE_SINUSOIDAL 0
 #define WAVE_TYPE_RECTANGULAR 1
 #define WAVE_TYPE_TRIANGULAR 2
 #define WAVE_TYPE_SAWTOOTH 3
-#define WAVE_TYPE_TRAPEZOIDAL 4
-#endif
+
+
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -95,8 +94,7 @@ paths of arbitrary length to compute both direct and indirect illumination.
 template <typename Float, typename Spectrum>
 class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
 public:
-    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, 
-    m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth)
+    MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
     DopplerPathIntegrator(const Properties &props) : Base(props) {
@@ -116,6 +114,9 @@ public:
         m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
         m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
         m_sensor_modulation_phase_offset = props.get<ScalarFloat>("f_phase_offset", 0.0f);
+        m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", 0.5f);
+        m_antithetic_shift_number = props.get<uint32_t>("antithetic_shift_number", 0);
+        m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_SYSTEMATIC);
         m_low_frequency_component_only = props.get<bool>("low_frequency_component_only", true);
         m_use_path_correlation = props.get<bool>("use_path_correlation", true);
     }
@@ -126,33 +127,6 @@ public:
             case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
             case WAVE_TYPE_RECTANGULAR: return dr::select(dr::abs(t-M_PI) > 0.5 * M_PI, 1, -1); //return dr::sign(dr::cos(t));
             case WAVE_TYPE_TRIANGULAR: return dr::select(t < M_PI, 1 - 2 * t / M_PI, -3 + 2 * t / M_PI);
-        }
-        return dr::cos(t);
-    }
-
-    Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: {
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return 2 - 4 * c; //a < 1 ? 1 - 2 * a : 1 - 2 * b;
-            }
-            case WAVE_TYPE_TRIANGULAR: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return (4 * c * c * c - 6 * c * c + 1) * 2.0 / 3.0;
-            }
-            case WAVE_TYPE_TRAPEZOIDAL: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                Float r = 2 - 4 * c;
-                return dr::clamp(2.0 * r, -2.0, 2.0);
-            }
         }
         return dr::cos(t);
     }
@@ -168,8 +142,7 @@ public:
         // return fg_t;
 
         if(m_low_frequency_component_only){
-            Float t = w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi;
-            Float fg_t = 0.25 * evalModulationFunctionValueLowPass(t, m_sensor_modulation_function_type);
+            Float fg_t = 0.25 * dr::cos(w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi);
             return fg_t;
         }
         
@@ -189,10 +162,57 @@ public:
                                      Bool active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
-        auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, ray_.time);
-        return {
-            spec, mask
-        };
+        if(m_time_sampling_method == TIME_SAMPLING_UNIFORM){
+            auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, ray_.time);
+            return {
+                spec, mask
+            };
+        }
+        if (m_antithetic_shift_number == 0){
+            Float t1;
+            Float t2;
+
+            if(m_time_sampling_method == TIME_SAMPLING_SYSTEMATIC){
+                t1 = ray_.time;
+                t2 = ray_.time + m_antithetic_shift * m_time;
+            }
+            else if (m_time_sampling_method == TIME_SAMPLING_STRATIFIED){
+                t1 = ray_.time * 0.5 + m_antithetic_shift * m_time;
+                Float new_time = sampler->next_1d();
+                t2 = (new_time * 0.5 + 0.5 + m_antithetic_shift) * m_time;
+            }
+            else if (m_time_sampling_method == TIME_SAMPLING_MIRROR){
+                t1 = ray_.time;
+                t2 = m_time - ray_.time + m_antithetic_shift * m_time;
+            }
+            
+            if(m_use_path_correlation){
+                ref<Sampler> sampler2 = sampler->clone();
+                auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, t1);
+                auto [spec2, mask2] = sample_helper(scene, sampler2, ray_, medium, aovs, active, t2);
+                return {
+                    (spec + spec2) * 0.5, mask & mask2
+                };
+            } else {
+                auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, t1);
+                auto [spec2, mask2] = sample_helper(scene, sampler, ray_, medium, aovs, active, t2);
+                return {
+                    (spec + spec2) * 0.5, mask & mask2
+                };
+            }
+        } 
+        else {
+            ref<Sampler> sampler2 = sampler->clone();
+            auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, ray_.time);
+            for(uint32_t i=1; i<m_antithetic_shift_number; i++){
+                ref<Sampler> sampler3 = sampler2->clone();
+                ScalarFloat antithetic_shift = i * 1.0 / m_antithetic_shift_number;
+                auto [spec2, mask2] = sample_helper(scene, sampler3, ray_, medium, aovs, active, ray_.time + m_antithetic_shift * m_time);
+                spec = spec + spec2;
+                mask = mask & mask2;
+            }
+            return {spec / m_antithetic_shift_number, mask};
+        }
     }
 
     std::pair<Spectrum, Bool> sample_helper(const Scene *scene,
@@ -226,7 +246,6 @@ public:
         Bool          prev_bsdf_delta = true;
         BSDFContext   bsdf_ctx;
 
-
         /* Set up a Dr.Jit loop. This optimizes away to a normal loop in scalar
            mode, and it generates either a a megakernel (default) or
            wavefront-style renderer in JIT variants. This can be controlled by
@@ -245,10 +264,8 @@ public:
            This accelerates wavefront-style rendering by avoiding costly
            synchronization points that check the 'active' flag. */
         loop.set_max_iterations(m_max_depth);
-        
+
         while (loop(active)) {
-            Bool correlate = (depth + 1) < m_path_correlation_depth;
-            
             /* dr::Loop implicitly masks all code in the loop using the 'active'
                flag, so there is no need to pass it to every function */
 
@@ -306,7 +323,7 @@ public:
             if (dr::any_or<true>(active_em)) {
                 // Sample the emitter
                 std::tie(ds, em_weight) = scene->sample_emitter_direction(
-                    si, sampler->next_2d_correlate(active, correlate), true, active_em);
+                    si, sampler->next_2d(), true, active_em);
                 active_em &= dr::neq(ds.pdf, 0.f);
 
                 /* Given the detached emitter sample, recompute its contribution
@@ -325,8 +342,8 @@ public:
 
             // ------ Evaluate BSDF * cos(theta) and sample direction -------
 
-            Float sample_1 = sampler->next_1d_correlate(active, correlate);
-            Point2f sample_2 = sampler->next_2d_correlate(active, correlate);
+            Float sample_1 = sampler->next_1d();
+            Point2f sample_2 = sampler->next_2d();
 
             auto [bsdf_val, bsdf_pdf, bsdf_sample, bsdf_weight]
                 = bsdf->eval_pdf_sample(bsdf_ctx, si, wo, sample_1, sample_2);
@@ -387,7 +404,7 @@ public:
 
             Float rr_prob = dr::minimum(throughput_max * dr::sqr(eta), .95f);
             Mask rr_active = depth >= m_rr_depth,
-                 rr_continue = sampler->next_1d_correlate(active, correlate) < rr_prob;
+                 rr_continue = sampler->next_1d() < rr_prob;
 
             /* Differentiable variants of the renderer require the the russian
                roulette sampling weight to be detached to avoid bias. This is a
@@ -450,6 +467,9 @@ private:
     ScalarFloat m_hetero_frequency;
     bool m_low_frequency_component_only;
     bool m_use_path_correlation;
+    ScalarFloat m_antithetic_shift;
+    uint32_t m_antithetic_shift_number;
+    uint32_t m_time_sampling_method;
 
 
     uint32_t m_sensor_modulation_function_type;

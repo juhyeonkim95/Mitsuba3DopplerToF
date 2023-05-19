@@ -223,7 +223,7 @@ Scene<Float, Spectrum>::ray_intersect_preliminary_cpu(const Ray3f &ray,
         using Vector3s = Vector<Single, 3>;
 
         RTCRayHit rh;
-        dr::store(&rh.ray.org_x, dr::concat(Vector3s(ray.o), float(0.f)));
+        dr::store(&rh.ray.org_x, dr::concat(Vector3s(ray.o), float(ray.time)));
         dr::store(&rh.ray.dir_x, dr::concat(Vector3s(ray.d), float(ray.time)));
         rh.ray.tfar = ray_maxt;
         rh.ray.mask = 0;
@@ -284,7 +284,7 @@ Scene<Float, Spectrum>::ray_intersect_preliminary_cpu(const Ray3f &ray,
         UInt32 zero = dr::zeros<UInt32>();
 
         dr::Array<Single, 3> ray_o(ray.o), ray_d(ray.d);
-        Single ray_mint(0.f), ray_time(ray.time);
+        Single ray_mint(0), ray_time(ray.time);
 
         uint32_t in[14] = { coherent.index(),  active.index(),
                             ray_o.x().index(), ray_o.y().index(),
@@ -366,7 +366,7 @@ Scene<Float, Spectrum>::ray_test_cpu(const Ray3f &ray, Mask coherent, Mask activ
         using Vector3s = Vector<Single, 3>;
 
         RTCRay ray2;
-        dr::store(&ray2.org_x, dr::concat(Vector3s(ray.o), float(0.f)));
+        dr::store(&ray2.org_x, dr::concat(Vector3s(ray.o), float(ray.time)));
         dr::store(&ray2.dir_x, dr::concat(Vector3s(ray.d), float(ray.time)));
         ray2.tfar = (float) ray_maxt;
         ray2.mask = 0;
@@ -402,7 +402,7 @@ Scene<Float, Spectrum>::ray_test_cpu(const Ray3f &ray, Mask coherent, Mask activ
 
         // Conversion, in case this is a double precision build
         dr::Array<Single, 3> ray_o(ray.o), ray_d(ray.d);
-        Single ray_mint(0.f), ray_time(ray.time);
+        Single ray_mint(0), ray_time(ray.time);
 
         uint32_t in[14] = { coherent.index(),  active.index(),
                             ray_o.x().index(), ray_o.y().index(),

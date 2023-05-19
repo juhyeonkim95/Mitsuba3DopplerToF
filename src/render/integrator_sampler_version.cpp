@@ -70,14 +70,14 @@ MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Propert
     m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_ANTITHETIC);
     m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
     m_is_doppler_integrator = props.get<bool>("is_doppler_integrator", false);
-    
+
     ScalarFloat default_shift = 0.0;
     if(m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
         default_shift = 0.5;
     }
-    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
-    m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
 
+    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
+    m_time_intervals = props.get<uint32_t>("n_time_samples", 2);
 
     m_block_size = props.get<uint32_t>("block_size", 0);
 
@@ -472,8 +472,7 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
         return;
     }
 
-    bool correlate_pixel = m_path_correlation_depth > 0;
-    // (m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL) || (m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER);
+    bool correlate_pixel = (m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL) || (m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER);
     
     const Film *film = sensor->film();
     const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
@@ -482,20 +481,20 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
     ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
                 offset = -ScalarVector2f(film->crop_offset()) * scale;
 
-    Vector2f sample_pos   = pos + sampler->next_2d_correlate(active, correlate_pixel),
+    Vector2f sample_pos   = pos + sampler->next_2d_correlate(active, correlate_pixel, m_time_intervals),
             adjusted_pos = dr::fmadd(sample_pos, scale, offset);
 
     Point2f aperture_sample(.5f);
     if (sensor->needs_aperture_sample())
-        aperture_sample = sampler->next_2d_correlate(active, correlate_pixel);
+        aperture_sample = sampler->next_2d_correlate(active, correlate_pixel, m_time_intervals);
 
     Float time = sensor->shutter_open();
     if (sensor->shutter_open_time() > 0.f)
-        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift) * sensor->shutter_open_time();
+        time += sampler->next_1d_time(active, m_time_sampling_method, m_time_intervals) * sensor->shutter_open_time();
 
     Float wavelength_sample = 0.f;
     if constexpr (is_spectral_v<Spectrum>)
-        wavelength_sample = sampler->next_1d_correlate(active, correlate_pixel);
+        wavelength_sample = sampler->next_1d_correlate(active, correlate_pixel, m_time_intervals);
 
     auto [ray, ray_weight] = sensor->sample_ray_differential(
         time, wavelength_sample, adjusted_pos, aperture_sample);

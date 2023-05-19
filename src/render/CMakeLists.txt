@@ -58,6 +58,7 @@ add_library(mitsuba-render OBJECT
   imageblock.cpp   ${INC_DIR}/imageblock.h
   integrator.cpp   ${INC_DIR}/integrator.h
   transientintegrator.cpp   ${INC_DIR}/transientintegrator.h
+  # dopplerintegrator.cpp   ${INC_DIR}/dopplerintegrator.h
                    ${INC_DIR}/interaction.h
   medium.cpp       ${INC_DIR}/medium.h
   mesh.cpp         ${INC_DIR}/mesh.h

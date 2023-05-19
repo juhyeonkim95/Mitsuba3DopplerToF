@@ -63,10 +63,11 @@ MI_VARIANT Scene<Float, Spectrum>::Scene(const Properties &props) {
         }
     }
 
+    // add shape group if needed.
     for(auto shape : m_shapes){
         if(shape->is_instance()){
             if(std::find(m_shapegroups.begin(), m_shapegroups.end(), (ShapeGroup*) shape->get_shapegroup()) == m_shapegroups.end()){
-                std::cout << "Not found! " << std::endl;
+                // std::cout << "Not found! " << std::endl;
                 m_shapegroups.push_back((ShapeGroup*) shape->get_shapegroup());
             }
         }
@@ -264,6 +265,7 @@ Scene<Float, Spectrum>::sample_emitter_direction(const Interaction3f &ref, const
         // Mark occluded samples as invalid if requested by the user
         if (test_visibility && dr::any_or<true>(active)) {
             Mask occluded = ray_test(ref.spawn_ray_to(ds.p), active);
+            //Mask occluded = ray_intersect(ref.spawn_ray_to(ds.p), +RayFlags::All, active).is_valid();
             dr::masked(spec, occluded) = 0.f;
             dr::masked(ds.pdf, occluded) = 0.f;
         }
@@ -276,6 +278,7 @@ Scene<Float, Spectrum>::sample_emitter_direction(const Interaction3f &ref, const
         // Mark occluded samples as invalid if requested by the user
         if (test_visibility && dr::any_or<true>(active)) {
             Mask occluded = ray_test(ref.spawn_ray_to(ds.p), active);
+            //Mask occluded = ray_intersect(ref.spawn_ray_to(ds.p), +RayFlags::All, active).is_valid();
             dr::masked(spec, occluded) = 0.f;
             dr::masked(ds.pdf, occluded) = 0.f;
         }

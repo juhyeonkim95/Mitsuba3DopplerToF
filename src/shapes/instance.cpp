@@ -62,11 +62,11 @@ public:
     Instance(const Properties &props) : Base(props) {
         m_transform = props.animated_transform("to_world");
 
-        std::cout << "Instance Animation Transform: \n " << m_transform.get()->to_string() << std::endl;
+        // std::cout << "Instance Animation Transform: \n " << m_transform.get()->to_string() << std::endl;
 
         // .get<ScalarTransform4f>("to_world", ScalarTransform4f());
         for (auto &kv : props.objects()) {
-            std::cout << kv.second.get()->to_string() << std::endl;
+            // std::cout << kv.second.get()->to_string() << std::endl;
 
             Base *shape = dynamic_cast<Base *>(kv.second.get());
             if (shape && shape->is_shapegroup()) {
@@ -265,8 +265,8 @@ public:
         
         Transform4f trafo = m_transform->eval(si.time).inverse();
         trafo = m_transform->eval(time) * trafo;
-        new_si.dp_du = trafo.transform_affine(si.dp_du);
-        new_si.dp_dv = trafo.transform_affine(si.dp_dv);
+        //new_si.dp_du = trafo.transform_affine(si.dp_du);
+        //new_si.dp_dv = trafo.transform_affine(si.dp_dv);
         new_si.p = trafo.transform_affine(si.p);
         new_si.n = dr::normalize(trafo.transform_affine(si.n));
 

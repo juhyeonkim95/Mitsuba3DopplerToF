@@ -398,9 +398,12 @@ public:
         /// 3D translation
         Vector3f trans;
 
+        /// transform matrix
+        Matrix4f transform;
+
         Keyframe(const Float time, const Matrix3f &scale,
-                 const Quaternion4f &quat, const Vector3f &trans)
-            : time(time), scale(scale), quat(quat), trans(trans) { }
+                 const Quaternion4f &quat, const Vector3f &trans, const Matrix4f &transform)
+            : time(time), scale(scale), quat(quat), trans(trans), transform(transform) { }
 
         bool operator==(const Keyframe &f) const {
             return (time == f.time && scale == f.scale
@@ -459,6 +462,10 @@ public:
         Value t0 = m_keyframes[0].time,
               t1 = m_keyframes[1].time,
               t  = dr::minimum(dr::maximum((time - t0) / (t1 - t0), 0.f), 1.f);
+
+
+        return Transform<Point<T, 4>>(m_keyframes[0].transform * (1-t) + m_keyframes[1].transform * t);
+
 
         // Interpolate the scale matrix
         Matrix3f scale0 = m_keyframes[0].scale,

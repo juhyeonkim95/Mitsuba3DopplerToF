@@ -9,7 +9,7 @@
 #include <mitsuba/core/util.h>
 #include <mitsuba/core/fstream.h>
 #include <mitsuba/render/film.h>
-#include <mitsuba/render/integrator.h>
+#include <mitsuba/render/dopplerintegrator.h>
 #include <mitsuba/render/sampler.h>
 #include <mitsuba/render/sensor.h>
 #include <mitsuba/render/spiral.h>
@@ -31,53 +31,21 @@ NAMESPACE_BEGIN(mitsuba)
 
 // -----------------------------------------------------------------------------
 
-MI_VARIANT Integrator<Float, Spectrum>::Integrator(const Properties & props)
-    : m_stop(false) {
-    m_timeout = props.get<ScalarFloat>("timeout", -1.f);
-
-    // Disable direct visibility of emitters if needed
-    m_hide_emitters = props.get<bool>("hide_emitters", false);
-}
-
-MI_VARIANT typename Integrator<Float, Spectrum>::TensorXf
-Integrator<Float, Spectrum>::render(Scene *scene,
-                                    uint32_t sensor_index,
-                                    uint32_t seed,
-                                    uint32_t spp,
-                                    bool develop,
-                                    bool evaluate) {
-    if (sensor_index >= scene->sensors().size())
-        Throw("Scene::render(): sensor index %i is out of bounds!", sensor_index);
-
-    return render(scene, scene->sensors()[sensor_index].get(),
-                  seed, spp, develop, evaluate);
-}
-
-MI_VARIANT std::vector<std::string> Integrator<Float, Spectrum>::aov_names() const {
-    return { };
-}
-
-MI_VARIANT void Integrator<Float, Spectrum>::cancel() {
-    m_stop = true;
-}
-
-// -----------------------------------------------------------------------------
-
-MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Properties &props)
+MI_VARIANT DopplerSamplingIntegrator<Float, Spectrum>::DopplerSamplingIntegrator(const Properties &props)
     : Base(props) {
 
         
     m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_ANTITHETIC);
     m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
     m_is_doppler_integrator = props.get<bool>("is_doppler_integrator", false);
-    
+
     ScalarFloat default_shift = 0.0;
     if(m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
         default_shift = 0.5;
     }
-    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
-    m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
 
+    m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
+    m_time_samples_number = props.get<uint32_t>("n_time_samples", 2);
 
     m_block_size = props.get<uint32_t>("block_size", 0);
 
@@ -98,10 +66,10 @@ MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Propert
     }
 }
 
-MI_VARIANT SamplingIntegrator<Float, Spectrum>::~SamplingIntegrator() { }
+MI_VARIANT DopplerSamplingIntegrator<Float, Spectrum>::~DopplerSamplingIntegrator() { }
 
-MI_VARIANT typename SamplingIntegrator<Float, Spectrum>::TensorXf
-SamplingIntegrator<Float, Spectrum>::render(Scene *scene,
+MI_VARIANT typename DopplerSamplingIntegrator<Float, Spectrum>::TensorXf
+DopplerSamplingIntegrator<Float, Spectrum>::render(Scene *scene,
                                             Sensor *sensor,
                                             uint32_t seed,
                                             uint32_t spp,
@@ -247,9 +215,9 @@ SamplingIntegrator<Float, Spectrum>::render(Scene *scene,
 
         Log(Info, "Starting render job (%ux%u, %u sample%s%s)",
             film_size.x(), film_size.y(), spp, spp == 1 ? "" : "s",
-            n_passes > 1 ? tfm::format(", %u passes", n_passes) : "");
+            n_passes > 1 || m_time_samples_number > 1  ? tfm::format(", %u passes", n_passes) : "");
 
-        if (n_passes > 1 && !evaluate) {
+        if ((n_passes > 1 || m_time_samples_number > 1) && !evaluate) {
             Log(Warn, "render(): forcing 'evaluate=true' since multi-pass "
                       "rendering was requested.");
             evaluate = true;
@@ -295,20 +263,71 @@ SamplingIntegrator<Float, Spectrum>::render(Scene *scene,
         std::unique_ptr<Float[]> aovs(new Float[n_channels]);
 
         // Potentially render multiple passes
-        for (size_t i = 0; i < n_passes; i++) {
-            render_sample(scene, sensor, sampler, block, aovs.get(), pos,
-                          diff_scale_factor);
+        Mask active= true;
+        Float time0 = sampler->next_1d(active);
+        ref<Sampler> sampler_cloned = sampler->clone();
+        uint32_t n = m_time_samples_number;
 
-            if (n_passes > 1) {
-                sampler->advance(); // Will trigger a kernel launch of size 1
-                sampler->schedule_state();
-                dr::eval(block->tensor());
+        for (size_t j = 0; j < n_passes; j++) {
+            for(size_t i=0; i < n; i++){
+                Float time;
+                if(m_time_sampling_method == TIME_SAMPLING_UNIFORM){
+                    time = sampler->next_1d(active);
+                }
+                else if (m_time_sampling_method == TIME_SAMPLING_STRATIFIED){
+                    time = (sampler->next_1d(active) + i) / n;
+                }
+                else if (m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
+                    if(i == 0){
+                        time = time0;
+                    } else {
+                        time = m_antithetic_shift + time0;
+                    }
+                }
+                else if (m_time_sampling_method == TIME_SAMPLING_ANTITHETIC_MIRROR){
+                    if(i == 0){
+                        time = time0;
+                    } else {
+                        time = m_antithetic_shift + 1.0 - time0;
+                    }
+                }
+                else if (m_time_sampling_method == TIME_SAMPLING_PERIODIC){
+                    time = time0 + (1.0 * i) / n;
+                }
+                else if (m_time_sampling_method == TIME_SAMPLING_REGULAR){
+                    time = (0.5 + 1.0 * i) / n;
+                }
+
+                if(m_spatial_correlation_method == SPATIAL_CORRELATION_NONE){
+                    render_sample(scene, sensor, sampler, sampler, block, aovs.get(), pos, time,
+                          diff_scale_factor);
+                }
+                else if(m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL){
+
+                    ref<Sampler> sampler_cloned_temp = sampler_cloned->clone();
+
+                    render_sample(scene, sensor, sampler_cloned_temp, sampler, block, aovs.get(), pos, time,
+                          diff_scale_factor);
+                }
+                else if(m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER){
+
+                    ref<Sampler> sampler_cloned_temp = sampler_cloned->clone();
+
+                    render_sample(scene, sensor, sampler_cloned_temp, sampler_cloned_temp, block, aovs.get(), pos, time,
+                          diff_scale_factor);
+                }
+
+                if (n_passes > 1 || n > 1) {
+                    sampler->advance(); // Will trigger a kernel launch of size 1
+                    sampler->schedule_state();
+                    dr::eval(block->tensor());
+                }
             }
         }
 
         film->put_block(block);
 
-        if (n_passes == 1 && jit_flag(JitFlag::VCallRecord) &&
+        if (n_passes == 1 && m_time_samples_number == 1 && jit_flag(JitFlag::VCallRecord) &&
             jit_flag(JitFlag::LoopRecord)) {
             Log(Info, "Computation graph recorded. (took %s)",
                 util::time_string((float) timer.reset(), true));
@@ -324,7 +343,7 @@ SamplingIntegrator<Float, Spectrum>::render(Scene *scene,
         if (evaluate) {
             dr::eval();
 
-            if (n_passes == 1 && jit_flag(JitFlag::VCallRecord) &&
+            if (n_passes == 1 && m_time_samples_number == 1 && jit_flag(JitFlag::VCallRecord) &&
                 jit_flag(JitFlag::LoopRecord)) {
                 Log(Info, "Code generation finished. (took %s)",
                     util::time_string((float) timer.value(), true));
@@ -345,7 +364,7 @@ SamplingIntegrator<Float, Spectrum>::render(Scene *scene,
     return result;
 }
 
-MI_VARIANT void SamplingIntegrator<Float, Spectrum>::render_block(const Scene *scene,
+MI_VARIANT void DopplerSamplingIntegrator<Float, Spectrum>::render_block(const Scene *scene,
                                                                    const Sensor *sensor,
                                                                    Sampler *sampler,
                                                                    ImageBlock *block,
@@ -376,7 +395,9 @@ MI_VARIANT void SamplingIntegrator<Float, Spectrum>::render_block(const Scene *s
 
             Point2f pos_f = Point2f(Point2i(pos) + block->offset());
             for (uint32_t j = 0; j < sample_count && !should_stop(); ++j) {
-                render_sample(scene, sensor, sampler, block, aovs, pos_f,
+                Mask active = true;
+                Float time = sampler->next_1d(active);
+                render_sample(scene, sensor, sampler, sampler, block, aovs, pos_f, time,
                               diff_scale_factor);
                 sampler->advance();
             }
@@ -396,84 +417,17 @@ MI_VARIANT void SamplingIntegrator<Float, Spectrum>::render_block(const Scene *s
 }
 
 MI_VARIANT void
-SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
+DopplerSamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
                                                    const Sensor *sensor,
                                                    Sampler *sampler,
+                                                   Sampler *sampler_path,
                                                    ImageBlock *block,
                                                    Float *aovs,
                                                    const Vector2f &pos,
+                                                   const Float &time,
                                                    ScalarFloat diff_scale_factor,
                                                    Mask active) const {
 
-    if(!m_is_doppler_integrator){
-        const Film *film = sensor->film();
-        const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
-        const bool box_filter = film->rfilter()->is_box_filter();
-
-        ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
-                    offset = -ScalarVector2f(film->crop_offset()) * scale;
-
-        Vector2f sample_pos   = pos + sampler->next_2d(active),
-                adjusted_pos = dr::fmadd(sample_pos, scale, offset);
-
-        Point2f aperture_sample(.5f);
-        if (sensor->needs_aperture_sample())
-            aperture_sample = sampler->next_2d(active);
-
-        Float time = sensor->shutter_open();
-        if (sensor->shutter_open_time() > 0.f)
-            time += sampler->next_1d(active) * sensor->shutter_open_time();
-
-        Float wavelength_sample = 0.f;
-        if constexpr (is_spectral_v<Spectrum>)
-            wavelength_sample = sampler->next_1d(active);
-
-        auto [ray, ray_weight] = sensor->sample_ray_differential(
-            time, wavelength_sample, adjusted_pos, aperture_sample);
-
-        if (ray.has_differentials)
-            ray.scale_differential(diff_scale_factor);
-
-        const Medium *medium = sensor->medium();
-
-        auto [spec, valid] = sample(scene, sampler, ray, medium,
-                aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
-
-        UnpolarizedSpectrum spec_u = unpolarized_spectrum(ray_weight * spec);
-
-        if (unlikely(has_flag(film->flags(), FilmFlags::Special))) {
-            film->prepare_sample(spec_u, ray.wavelengths, aovs,
-                                /*weight*/ 1.f,
-                                /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
-                                valid);
-        } else {
-            Color3f rgb;
-            if constexpr (is_spectral_v<Spectrum>)
-                rgb = spectrum_to_srgb(spec_u, ray.wavelengths, active);
-            else if constexpr (is_monochromatic_v<Spectrum>)
-                rgb = spec_u.x();
-            else
-                rgb = spec_u;
-
-            aovs[0] = rgb.x();
-            aovs[1] = rgb.y();
-            aovs[2] = rgb.z();
-
-            if (likely(has_alpha)) {
-                aovs[3] = dr::select(valid, Float(1.f), Float(0.f));
-                aovs[4] = 1.f;
-            } else {
-                aovs[3] = 1.f;
-            }
-        }
-
-        // With box filter, ignore random offset to prevent numerical instabilities
-        block->put(box_filter ? pos : sample_pos, aovs, active);
-        return;
-    }
-
-    bool correlate_pixel = m_path_correlation_depth > 0;
-    // (m_spatial_correlation_method == SPATIAL_CORRELATION_PIXEL) || (m_spatial_correlation_method == SPATIAL_CORRELATION_SAMPLER);
     
     const Film *film = sensor->film();
     const bool has_alpha = has_flag(film->flags(), FilmFlags::Alpha);
@@ -482,39 +436,38 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
     ScalarVector2f scale = 1.f / ScalarVector2f(film->crop_size()),
                 offset = -ScalarVector2f(film->crop_offset()) * scale;
 
-    Vector2f sample_pos   = pos + sampler->next_2d_correlate(active, correlate_pixel),
+    Vector2f sample_pos   = pos + sampler->next_2d(active),
             adjusted_pos = dr::fmadd(sample_pos, scale, offset);
 
     Point2f aperture_sample(.5f);
     if (sensor->needs_aperture_sample())
-        aperture_sample = sampler->next_2d_correlate(active, correlate_pixel);
+        aperture_sample = sampler->next_2d(active);
 
-    Float time = sensor->shutter_open();
-    if (sensor->shutter_open_time() > 0.f)
-        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift) * sensor->shutter_open_time();
+    Float ray_time = sensor->shutter_open() + time * sensor->shutter_open_time();
 
     Float wavelength_sample = 0.f;
     if constexpr (is_spectral_v<Spectrum>)
-        wavelength_sample = sampler->next_1d_correlate(active, correlate_pixel);
+        wavelength_sample = sampler->next_1d(active);
 
     auto [ray, ray_weight] = sensor->sample_ray_differential(
-        time, wavelength_sample, adjusted_pos, aperture_sample);
+        ray_time, wavelength_sample, adjusted_pos, aperture_sample);
 
     if (ray.has_differentials)
         ray.scale_differential(diff_scale_factor);
 
     const Medium *medium = sensor->medium();
 
-    auto [spec, valid] = sample(scene, sampler, ray, medium,
+    auto [spec, valid] = sample(scene, sampler_path, ray, medium,
             aovs + (has_alpha ? 5 : 4) /* skip R,G,B,[A],W */, active);
+    
 
     UnpolarizedSpectrum spec_u = unpolarized_spectrum(ray_weight * spec);
-
+    
     if (unlikely(has_flag(film->flags(), FilmFlags::Special))) {
         film->prepare_sample(spec_u, ray.wavelengths, aovs,
-                            /*weight*/ 1.f,
-                            /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
-                            valid);
+                             /*weight*/ 1.f,
+                             /*alpha */ dr::select(valid, Float(1.f), Float(0.f)),
+                             valid);
     } else {
         Color3f rgb;
         if constexpr (is_spectral_v<Spectrum>)
@@ -538,11 +491,10 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
 
     // With box filter, ignore random offset to prevent numerical instabilities
     block->put(box_filter ? pos : sample_pos, aovs, active);
-    return;
 }
 
-MI_VARIANT std::pair<Spectrum, typename SamplingIntegrator<Float, Spectrum>::Mask>
-SamplingIntegrator<Float, Spectrum>::sample(const Scene * /* scene */,
+MI_VARIANT std::pair<Spectrum, typename DopplerSamplingIntegrator<Float, Spectrum>::Mask>
+DopplerSamplingIntegrator<Float, Spectrum>::sample(const Scene * /* scene */,
                                             Sampler * /* sampler */,
                                             const RayDifferential3f & /* ray */,
                                             const Medium * /* medium */,
@@ -553,7 +505,7 @@ SamplingIntegrator<Float, Spectrum>::sample(const Scene * /* scene */,
 
 // -----------------------------------------------------------------------------
 
-MI_VARIANT MonteCarloIntegrator<Float, Spectrum>::MonteCarloIntegrator(const Properties &props)
+MI_VARIANT DopplerMonteCarloIntegrator<Float, Spectrum>::DopplerMonteCarloIntegrator(const Properties &props)
     : Base(props) {
     /*  Longest visualized path depth (``-1 = infinite``). A value of \c 1 will
         visualize only directly visible light sources. \c 2 will lead to
@@ -572,7 +524,7 @@ MI_VARIANT MonteCarloIntegrator<Float, Spectrum>::MonteCarloIntegrator(const Pro
     m_rr_depth = (uint32_t) rr_depth;
 }
 
-MI_VARIANT MonteCarloIntegrator<Float, Spectrum>::~MonteCarloIntegrator() { }
+MI_VARIANT DopplerMonteCarloIntegrator<Float, Spectrum>::~DopplerMonteCarloIntegrator() { }
 
 // -----------------------------------------------------------------------------
 
@@ -590,237 +542,12 @@ MI_VARIANT AdjointIntegrator<Float, Spectrum>::AdjointIntegrator(const Propertie
         Throw("\"max_depth\" must be set to -1 (infinite) or a value >= 0");
 }
 
-MI_VARIANT AdjointIntegrator<Float, Spectrum>::~AdjointIntegrator() { }
-
-MI_VARIANT typename AdjointIntegrator<Float, Spectrum>::TensorXf
-AdjointIntegrator<Float, Spectrum>::render(Scene *scene,
-                                           Sensor *sensor,
-                                           uint32_t seed,
-                                           uint32_t spp,
-                                           bool develop,
-                                           bool evaluate) {
-    ScopedPhase sp(ProfilerPhase::Render);
-    m_stop = false;
-
-    Film *film = sensor->film();
-    ScalarVector2u film_size = film->size(),
-                   crop_size = film->crop_size();
-
-    // Potentially adjust the number of samples per pixel if spp != 0
-    Sampler *sampler = sensor->sampler();
-    if (spp)
-        sampler->set_sample_count(spp);
-    spp = sampler->sample_count();
-
-    // Figure out how to divide up samples into passes, if needed
-    uint32_t spp_per_pass = (m_samples_per_pass == (uint32_t) -1)
-                                ? spp
-                                : std::min(m_samples_per_pass, spp);
-
-    if ((spp % spp_per_pass) != 0)
-        Throw("sample_count (%d) must be a multiple of samples_per_pass (%d).",
-              spp, spp_per_pass);
-
-    uint32_t n_passes = spp / spp_per_pass;
-
-    size_t samples_per_pass =
-        (size_t) film_size.x() * (size_t) film_size.y() * (size_t) spp_per_pass;
-
-    std::vector<std::string> aovs = aov_names();
-    if (!aovs.empty())
-        Throw("AOVs are not supported in the AdjointIntegrator!");
-    film->prepare(aovs);
-
-    // Special case: no emitters present in the scene.
-    if (unlikely(scene->emitters().empty())) {
-        Log(Info, "Rendering finished (no emitters found, returning black image).");
-        TensorXf result;
-        if (develop) {
-            result = film->develop();
-            dr::schedule(result);
-        } else {
-            film->schedule_storage();
-        }
-        return result;
-    }
-
-    ScalarFloat sample_scale =
-        dr::prod(crop_size) / ScalarFloat(spp * dr::prod(film_size));
-
-    TensorXf result;
-    if constexpr (!dr::is_jit_v<Float>) {
-        size_t n_threads = Thread::thread_count();
-
-        Log(Info, "Starting render job (%ux%u, %u sample%s,%s %u thread%s)",
-            crop_size.x(), crop_size.y(), spp, spp == 1 ? "" : "s",
-            n_passes > 1 ? tfm::format(" %d passes,", n_passes) : "", n_threads,
-            n_threads == 1 ? "" : "s");
-
-        if (m_timeout > 0.f)
-            Log(Info, "Timeout specified: %.2f seconds.", m_timeout);
-
-        // Split up all samples between threads
-        size_t grain_size =
-            std::max(samples_per_pass / (4 * n_threads), (size_t) 1);
-
-        std::mutex mutex;
-        ref<ProgressReporter> progress = new ProgressReporter("Rendering");
-
-        size_t total_samples = samples_per_pass * n_passes;
-
-        seed *= (uint32_t) total_samples / (uint32_t) grain_size;
-        std::atomic<size_t> samples_done(0);
-
-        // Start the render timer (used for timeouts & log messages)
-        m_render_timer.reset();
-
-        ThreadEnvironment env;
-        dr::parallel_for(
-            dr::blocked_range<size_t>(0, total_samples, grain_size),
-            [&](const dr::blocked_range<size_t> &range) {
-                ScopedSetThreadEnvironment set_env(env);
-
-                // Fork a non-overlapping sampler for the current worker
-                ref<Sampler> sampler = sensor->sampler()->clone();
-
-                ref<ImageBlock> block = film->create_block(
-                    ScalarVector2u(0) /* use crop size */,
-                    true /* normalize */,
-                    false /* border */);
-
-                block->set_offset(film->crop_offset());
-
-                // Clear block (it's being reused)
-                block->clear();
-
-                sampler->seed(seed +
-                              (uint32_t) range.begin() / (uint32_t) grain_size);
-
-                size_t ctr = 0;
-                for (auto i = range.begin(); i != range.end() && !should_stop(); ++i) {
-                    sample(scene, sensor, sampler, block, sample_scale);
-                    sampler->advance();
-
-                    ctr++;
-                    if (ctr > 10000) {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        samples_done += ctr;
-                        ctr = 0;
-                        progress->update(samples_done / (ScalarFloat) total_samples);
-                    }
-                }
-                total_samples += ctr;
-
-                // When all samples are done for this range, commit to the film
-                /* locked */ {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    progress->update(samples_done / (ScalarFloat) total_samples);
-                    film->put_block(block);
-                }
-            }
-        );
-
-        if (develop)
-            result = film->develop();
-    } else {
-        if (n_passes > 1 && !evaluate) {
-            Log(Warn, "render(): forcing 'evaluate=true' since multi-pass "
-                      "rendering was requested.");
-            evaluate = true;
-        }
-
-        constexpr size_t wavefront_size_limit = 0xffffffffu;
-        if (samples_per_pass > wavefront_size_limit) {
-            spp_per_pass /=
-                (uint32_t)((samples_per_pass + wavefront_size_limit - 1) /
-                           wavefront_size_limit);
-            n_passes = spp / spp_per_pass;
-            samples_per_pass = (size_t) film_size.x() * (size_t) film_size.y() *
-                               (size_t) spp_per_pass;
-
-            Log(Warn,
-                "The requested rendering task involves %zu Monte Carlo "
-                "samples, which exceeds the upper limit of 2^32 = 4294967296 "
-                "for this variant. Mitsuba will instead split the rendering "
-                "task into %zu smaller passes to avoid exceeding the limits.",
-                samples_per_pass, n_passes);
-        }
-
-        Log(Info, "Starting render job (%ux%u, %u sample%s%s)",
-            crop_size.x(), crop_size.y(), spp, spp == 1 ? "" : "s",
-            n_passes > 1 ? tfm::format(", %u passes", n_passes) : "");
-
-        // Inform the sampler about the passes (needed in vectorized modes)
-        sampler->set_samples_per_wavefront(spp_per_pass);
-
-        // Seed the underlying random number generators, if applicable
-        sampler->seed(seed, (uint32_t) samples_per_pass);
-
-        ref<ImageBlock> block = film->create_block(
-            ScalarVector2u(0) /* use crop size */,
-            true /* normalize */,
-            false /* border */);
-
-        block->set_offset(film->crop_offset());
-
-        /* Disable coalescing of atomic writes performed within the ImageBlock
-           (they are highly irregular in any particle tracing-based method) */
-        block->set_coalesce(false);
-
-        Timer timer;
-        for (size_t i = 0; i < n_passes; i++) {
-            sample(scene, sensor, sampler, block, sample_scale);
-
-            if (n_passes > 1) {
-                sampler->advance(); // Will trigger a kernel launch of size 1
-                sampler->schedule_state();
-                dr::eval(block->tensor());
-            }
-        }
-
-        film->put_block(block);
-
-        if (develop) {
-            result = film->develop();
-            dr::schedule(result);
-        } else {
-            film->schedule_storage();
-        }
-
-        if (evaluate) {
-            dr::eval();
-
-            if (n_passes == 1 && jit_flag(JitFlag::VCallRecord) &&
-                jit_flag(JitFlag::LoopRecord)) {
-                Log(Info, "Code generation finished. (took %s)",
-                    util::time_string((float) timer.value(), true));
-
-                /* Separate computation graph recording from the actual
-                   rendering time in single-pass mode */
-                m_render_timer.reset();
-            }
-
-            dr::sync_thread();
-        }
-    }
-
-    if (!m_stop && (evaluate || !dr::is_jit_v<Float>))
-        Log(Info, "Rendering finished. (took %s)",
-            util::time_string((float) m_render_timer.value(), true));
-
-    return result;
-}
 
 // -----------------------------------------------------------------------------
+MI_IMPLEMENT_CLASS_VARIANT(DopplerSamplingIntegrator, Integrator)
+MI_IMPLEMENT_CLASS_VARIANT(DopplerMonteCarloIntegrator, DopplerSamplingIntegrator)
 
-MI_IMPLEMENT_CLASS_VARIANT(Integrator, Object, "integrator")
-MI_IMPLEMENT_CLASS_VARIANT(SamplingIntegrator, Integrator)
-MI_IMPLEMENT_CLASS_VARIANT(MonteCarloIntegrator, SamplingIntegrator)
-MI_IMPLEMENT_CLASS_VARIANT(AdjointIntegrator, Integrator)
-
-MI_INSTANTIATE_CLASS(Integrator)
-MI_INSTANTIATE_CLASS(SamplingIntegrator)
-MI_INSTANTIATE_CLASS(MonteCarloIntegrator)
-MI_INSTANTIATE_CLASS(AdjointIntegrator)
+MI_INSTANTIATE_CLASS(DopplerSamplingIntegrator)
+MI_INSTANTIATE_CLASS(DopplerMonteCarloIntegrator)
 
 NAMESPACE_END(mitsuba)

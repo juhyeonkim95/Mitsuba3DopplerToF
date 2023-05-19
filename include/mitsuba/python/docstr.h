@@ -9161,6 +9161,7 @@ static const char *__doc_mitsuba_AnimatedTransform_Keyframe_trans = R"doc(animat
 static const char *__doc_mitsuba_AnimatedTransform_Keyframe_quat = R"doc(animated_transform temp)doc";
 static const char *__doc_mitsuba_AnimatedTransform_Keyframe_scale = R"doc(animated_transform temp)doc";
 static const char *__doc_mitsuba_AnimatedTransform_Keyframe_time = R"doc(animated_transform temp)doc";
+static const char *__doc_mitsuba_AnimatedTransform_Keyframe_transform = R"doc(animated_transform temp)doc";
 
 static const char *__doc_mitsuba_TransportMode =
 R"doc(Specifies the transport mode when sampling or evaluating a scattering

@@ -394,7 +394,7 @@ MI_VARIANT void Scene<Float, Spectrum>::accel_parameters_changed_gpu() {
                 OptixAccelBuildOptions accel_options = {};
                 accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
                 accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
-                accel_options.motionOptions.numKeys = 0;
+                //accel_options.motionOptions.numKeys = 0;
                 // accel_options.motionOptions.numKeys = 2;
                 // accel_options.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
                 // accel_options.motionOptions.timeBegin = 0.0;
@@ -543,7 +543,7 @@ Scene<Float, Spectrum>::ray_intersect_preliminary_gpu(const Ray3f &ray,
 
         using Single = dr::float32_array_t<Float>;
         dr::Array<Single, 3> ray_o(ray.o), ray_d(ray.d);
-        Single ray_mint(0.f), ray_maxt(ray.maxt), ray_time(ray.time);
+        Single ray_mint(0), ray_maxt(ray.maxt), ray_time(ray.time);
 
         // Be careful with 'ray.maxt' in double precision variants
         if constexpr (!std::is_same_v<Single, Float>)
@@ -625,7 +625,7 @@ Scene<Float, Spectrum>::ray_test_gpu(const Ray3f &ray, Mask active) const {
 
         using Single = dr::float32_array_t<Float>;
         dr::Array<Single, 3> ray_o(ray.o), ray_d(ray.d);
-        Single ray_mint(0.f), ray_maxt(ray.maxt), ray_time(ray.time);
+        Single ray_mint(0), ray_maxt(ray.maxt), ray_time(ray.time);
 
         // Be careful with 'ray.maxt' in double precision variants
         if constexpr (!std::is_same_v<Single, Float>)

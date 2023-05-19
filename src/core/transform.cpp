@@ -32,7 +32,7 @@ void AnimatedTransform::append(Float time, const Transform4f &trafo) {
     if (m_keyframes.empty())
         m_transform = trafo;
 
-    m_keyframes.push_back(Keyframe { time, M, Q, T });
+    m_keyframes.push_back(Keyframe { time, M, Q, T, trafo.matrix });
 }
 
 bool AnimatedTransform::has_scale() const {
