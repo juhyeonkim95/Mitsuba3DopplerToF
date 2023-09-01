@@ -1,3 +1,12 @@
+
+#pragma once
+
+#include <mitsuba/core/bbox.h>
+#include <mitsuba/core/properties.h>
+#include <mitsuba/core/spectrum.h>
+#include <mitsuba/core/transform.h>
+#include <mitsuba/render/interaction.h>
+
 NAMESPACE_BEGIN(mitsuba)
 
 enum EWaveformType {
@@ -7,7 +16,13 @@ enum EWaveformType {
     WAVE_TYPE_TRAPEZOIDAL = 3
 };
 
-Float evalModulationFunctionValue(Float _t, uint32_t function_type) const{
+// s(t) : sensor modulation
+// g(t) : illumination modulation
+// L(t) : low-pass(s(t) * g(t))
+
+// Eval s(t) or g(t)
+template <typename Float>
+Float eval_modulation_function_value(Float _t, EWaveformType function_type) {
     Float t = dr::fmod(_t, 2 * M_PI);
     switch(function_type){
         case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
@@ -17,7 +32,9 @@ Float evalModulationFunctionValue(Float _t, uint32_t function_type) const{
     return dr::cos(t);
 }
 
-Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const{
+// Eval L(t)
+template <typename Float>
+Float eval_modulation_function_value_low_pass(Float _t, EWaveformType function_type) {
     Float t = dr::fmod(_t, 2 * M_PI);
     switch(function_type){
         case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
@@ -25,7 +42,7 @@ Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const
             Float a = t / M_PI;
             Float b = 2 - a;
             Float c = dr::select(a < b, a, b);
-            return 2 - 4 * c; //a < 1 ? 1 - 2 * a : 1 - 2 * b;
+            return 2 - 4 * c;
         }
         case WAVE_TYPE_TRIANGULAR: {    
             Float a = t / M_PI;
@@ -43,3 +60,5 @@ Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const
     }
     return dr::cos(t);
 }
+
+NAMESPACE_END(mitsuba)

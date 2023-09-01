@@ -109,7 +109,7 @@ public:
     }
 
 
-    Float evalModulationWeight(Float ray_time, Float path_length) const
+    Float eval_modulation_weight(Float ray_time, Float path_length) const
     {
         //Float w_g = 2 * M_PI * m_illumination_modulation_frequency_mhz * 1e6;
         //Float w_f = 2 * M_PI * m_sensor_modulation_frequency_mhz * 1e6;
@@ -232,7 +232,7 @@ public:
             //     // Compute MIS weight for emitter sample from previous bounce
             //     Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
                 
-            //     Float length_weight = evalModulationWeight(ray.time, path_length);
+            //     Float length_weight = eval_modulation_weight(ray.time, path_length);
 
             //     // Accumulate, being careful with polarization (see spec_fma)
             //     result = spec_fma(
@@ -252,7 +252,7 @@ public:
             //     // Compute MIS weight for emitter sample from previous bounce
             //     Float mis_bsdf2 = mis_weight(prev_bsdf_pdf2, em_pdf2);
                 
-            //     Float length_weight2 = evalModulationWeight(ray2.time, path_length2);
+            //     Float length_weight2 = eval_modulation_weight(ray2.time, path_length2);
 
             //     // Accumulate, being careful with polarization (see spec_fma)
             //     result = spec_fma(
@@ -353,7 +353,7 @@ public:
                 // compute path length
                 Float em_path_length = path_length + ds.dist;
                 
-                Float length_weight = evalModulationWeight(ray.time, em_path_length);
+                Float length_weight = eval_modulation_weight(ray.time, em_path_length);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(
@@ -376,7 +376,7 @@ public:
                 // compute path length
                 Float em_path_length2 = path_length2 + ds2.dist;
                 
-                Float length_weight2 = evalModulationWeight(ray2.time, em_path_length2);
+                Float length_weight2 = eval_modulation_weight(ray2.time, em_path_length2);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em2] = spec_fma(

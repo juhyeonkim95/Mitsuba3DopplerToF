@@ -121,7 +121,7 @@ public:
         m_use_path_correlation = props.get<bool>("use_path_correlation", true);
     }
 
-    Float evalModulationFunctionValue(Float _t, uint32_t function_type) const{
+    Float eval_modulation_function_value(Float _t, uint32_t function_type) const{
         Float t = dr::fmod(_t, 2 * M_PI);
         switch(function_type){
             case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
@@ -131,7 +131,7 @@ public:
         return dr::cos(t);
     }
 
-    Float evalModulationWeight(Float ray_time, Float path_length) const
+    Float eval_modulation_weight(Float ray_time, Float path_length) const
     {
         Float w_g = 2 * M_PI * m_illumination_modulation_frequency_mhz * 1e6;
         Float w_d = 2 * M_PI / m_time * m_hetero_frequency;
@@ -149,8 +149,8 @@ public:
         Float modulation_illumination_t = w_g * ray_time - phi;
         Float modulation_sensor_t = (w_g + w_d) * ray_time  + 2 * M_PI * m_sensor_modulation_phase_offset;
         
-        Float modulation_illumination = 0.5 * evalModulationFunctionValue(modulation_illumination_t, m_illumination_modulation_function_type) + 0.5;
-        Float modulation_sensor = evalModulationFunctionValue(modulation_sensor_t, m_sensor_modulation_function_type);
+        Float modulation_illumination = 0.5 * eval_modulation_function_value(modulation_illumination_t, m_illumination_modulation_function_type) + 0.5;
+        Float modulation_sensor = eval_modulation_function_value(modulation_sensor_t, m_sensor_modulation_function_type);
         return modulation_illumination * modulation_sensor;
     }
 
@@ -293,7 +293,7 @@ public:
 
                 // Compute MIS weight for emitter sample from previous bounce
                 Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
-                Float length_weight = evalModulationWeight(ray.time, path_length);
+                Float length_weight = eval_modulation_weight(ray.time, path_length);
 
 
                 // Accumulate, being careful with polarization (see spec_fma)
@@ -357,7 +357,7 @@ public:
                 Float mis_em =
                     dr::select(ds.delta, 1.f, mis_weight(ds.pdf, bsdf_pdf));
                 Float em_path_length = path_length + ds.dist;
-                Float length_weight = evalModulationWeight(ray.time, em_path_length);
+                Float length_weight = eval_modulation_weight(ray.time, em_path_length);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(

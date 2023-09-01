@@ -7,91 +7,7 @@
 #include <mitsuba/render/records.h>
 #include <mitsuba/render/waveform_utils.h>
 
-#ifndef WAVE_TYPE_SINUSOIDAL
-#define WAVE_TYPE_SINUSOIDAL 0
-#define WAVE_TYPE_RECTANGULAR 1
-#define WAVE_TYPE_TRIANGULAR 2
-#define WAVE_TYPE_SAWTOOTH 3
-#define WAVE_TYPE_TRAPEZOIDAL 4
-#endif
-
 NAMESPACE_BEGIN(mitsuba)
-
-/**!
-
-.. _integrator-path:
-
-Path tracer (:monosp:`path`)
-----------------------------
-
-.. pluginparameters::
-
- * - max_depth
-   - |int|
-   - Specifies the longest path depth in the generated output image (where -1
-     corresponds to :math:`\infty`). A value of 1 will only render directly
-     visible light sources. 2 will lead to single-bounce (direct-only)
-     illumination, and so on. (Default: -1)
-
- * - rr_depth
-   - |int|
-   - Specifies the path depth, at which the implementation will begin to use
-     the *russian roulette* path termination criterion. For example, if set to
-     1, then path generation many randomly cease after encountering directly
-     visible surfaces. (Default: 5)
-
- * - hide_emitters
-   - |bool|
-   - Hide directly visible emitters. (Default: no, i.e. |false|)
-
-This integrator implements a basic path tracer and is a **good default choice**
-when there is no strong reason to prefer another method.
-
-To use the path tracer appropriately, it is instructive to know roughly how
-it works: its main operation is to trace many light paths using *random walks*
-starting from the sensor. A single random walk is shown below, which entails
-casting a ray associated with a pixel in the output image and searching for
-the first visible intersection. A new direction is then chosen at the intersection,
-and the ray-casting step repeats over and over again (until one of several
-stopping criteria applies).
-
-.. image:: ../../resources/data/docs/images/integrator/integrator_path_figure.png
-    :width: 95%
-    :align: center
-
-At every intersection, the path tracer tries to create a connection to
-the light source in an attempt to find a *complete* path along which
-light can flow from the emitter to the sensor. This of course only works
-when there is no occluding object between the intersection and the emitter.
-
-This directly translates into a category of scenes where a path tracer can be
-expected to produce reasonable results: this is the case when the emitters are
-easily "accessible" by the contents of the scene. For instance, an interior
-scene that is lit by an area light will be considerably harder to render when
-this area light is inside a glass enclosure (which effectively counts as an
-occluder).
-
-Like the :ref:`direct <integrator-direct>` plugin, the path tracer internally
-relies on multiple importance sampling to combine BSDF and emitter samples. The
-main difference in comparison to the former plugin is that it considers light
-paths of arbitrary length to compute both direct and indirect illumination.
-
-.. note:: This integrator does not handle participating media
-
-.. tabs::
-    .. code-tab::  xml
-        :name: path-integrator
-
-        <integrator type="path">
-            <integer name="max_depth" value="8"/>
-        </integrator>
-
-    .. code-tab:: python
-
-        'type': 'path',
-        'max_depth': 8
-
- */
 
 template <typename Float, typename Spectrum>
 class DopplerToFPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
@@ -109,7 +25,12 @@ public:
         m_illumination_modulation_offset = props.get<ScalarFloat>("g_0", 0.5f);
         m_sensor_modulation_frequency_mhz = props.get<ScalarFloat>("w_s", 30.0f);
         m_sensor_modulation_phase_offset = props.get<ScalarFloat>("sensor_phase_offset", 0.0f);
-
+        
+        // syntactic sugar
+        hetero_offset = props.get<ScalarFloat>("hetero_offset", -1000.0f);
+        if(hetero_offset != -1000.0f){
+            m_sensor_modulation_phase_offset = hetero_offset * 2 * M_PI;
+        }
         m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", -1000.0f);
         if (m_hetero_frequency > -1000.0f){
             m_sensor_modulation_frequency_mhz = m_illumination_modulation_frequency_mhz + m_hetero_frequency / m_time * 1e-6;
@@ -133,40 +54,27 @@ public:
             m_wave_function_type = EWaveformType::WAVE_TYPE_TRAPEZOIDAL;
         }
 
-
-        m_sensor_modulation_function_type = props.get<uint32_t>("sensor_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
-        m_illumination_modulation_function_type = props.get<uint32_t>("illumination_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
-
-        m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
-        m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
         m_low_frequency_component_only = props.get<bool>("low_frequency_component_only", true);
-        m_use_path_correlation = props.get<bool>("use_path_correlation", true);
     }
-
     
 
-    Float evalModulationWeight(Float ray_time, Float path_length) const
+    Float eval_modulation_weight(Float ray_time, Float path_length) const
     {
         Float w_g = 2 * M_PI * m_illumination_modulation_frequency_mhz * 1e6;
         Float w_d = 2 * M_PI / m_time * m_hetero_frequency;
-
         Float phi = (2 * M_PI * m_illumination_modulation_frequency_mhz) / 300 * path_length;
         
-        // Float fg_t = 0.25 * dr::cos(w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi);
-        // return fg_t;
-
         if(m_low_frequency_component_only){
-            Float t = w_d * ray_time + 2 * M_PI * m_sensor_modulation_phase_offset + phi;
-            Float fg_t = 0.25 * evalModulationFunctionValueLowPass(t, m_sensor_modulation_function_type);
-            return fg_t;
+            Float t = w_d * ray_time + m_sensor_modulation_phase_offset + phi;
+            Float sg_t = 0.5 * m_illumination_modulation_scale * eval_modulation_function_value_low_pass<Float>(t, m_wave_function_type);
+            return sg_t;
         }
         
-        Float modulation_illumination_t = w_g * ray_time - phi;
-        Float modulation_sensor_t = (w_g + w_d) * ray_time  + 2 * M_PI * m_sensor_modulation_phase_offset;
-        
-        Float modulation_illumination = 0.5 * evalModulationFunctionValue(modulation_illumination_t, m_illumination_modulation_function_type) + 0.5;
-        Float modulation_sensor = evalModulationFunctionValue(modulation_sensor_t, m_sensor_modulation_function_type);
-        return modulation_illumination * modulation_sensor;
+        Float t1 = w_g * ray_time - phi;
+        Float t2 = (w_g + w_d) * ray_time  + m_sensor_modulation_phase_offset;
+        Float g_t = m_illumination_modulation_scale * eval_modulation_function_value<Float>(t1, m_wave_function_type) + m_illumination_modulation_offset;
+        Float s_t = eval_modulation_function_value<Float>(t2, m_wave_function_type);
+        return s_t * g_t;
     }
 
     std::pair<Spectrum, Bool> sample(const Scene *scene,
@@ -264,7 +172,7 @@ public:
 
                 // Compute MIS weight for emitter sample from previous bounce
                 Float mis_bsdf = mis_weight(prev_bsdf_pdf, em_pdf);
-                Float length_weight = evalModulationWeight(ray.time, path_length);
+                Float length_weight = eval_modulation_weight(ray.time, path_length);
 
 
                 // Accumulate, being careful with polarization (see spec_fma)
@@ -328,7 +236,7 @@ public:
                 Float mis_em =
                     dr::select(ds.delta, 1.f, mis_weight(ds.pdf, bsdf_pdf));
                 Float em_path_length = path_length + ds.dist;
-                Float length_weight = evalModulationWeight(ray.time, em_path_length);
+                Float length_weight = eval_modulation_weight(ray.time, em_path_length);
 
                 // Accumulate, being careful with polarization (see spec_fma)
                 result[active_em] = spec_fma(
@@ -424,25 +332,15 @@ public:
 
     MI_DECLARE_CLASS()
 private:
-    //ScalarFloat m_tau_ps;
-    //PathLenghImportanceFunctionType m_path_length_importance_function_type;
-    //ScalarFloat m_delta_tau_ps;
+    ScalarFloat m_time;
     ScalarFloat m_illumination_modulation_frequency_mhz;
     ScalarFloat m_illumination_modulation_scale;
     ScalarFloat m_illumination_modulation_offset;
     ScalarFloat m_sensor_modulation_frequency_mhz;
-    ScalarFloat m_sensor_modulation_scale;
-    ScalarFloat m_sensor_modulation_offset;
     ScalarFloat m_sensor_modulation_phase_offset;
-    ScalarFloat m_time;
     ScalarFloat m_hetero_frequency;
-    bool m_low_frequency_component_only;
-    bool m_use_path_correlation;
-
     EWaveformType m_wave_function_type;
-
-    // uint32_t m_sensor_modulation_function_type;
-    // uint32_t m_illumination_modulation_function_type;
+    bool m_low_frequency_component_only;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(DopplerToFPathIntegrator, MonteCarloIntegrator)

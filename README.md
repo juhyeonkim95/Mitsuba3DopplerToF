@@ -20,8 +20,12 @@ Followings are explanation for each parameter.
 * `g_1` : Illumination modulation scale. (default : 0.5)
 * `g_0` : Illumination modulation offset. (default : 0.5)
 * `w_s` : Sensor frequency in MHz. (default : 30)
-* `hetero_frequency` : Relative heterodyne frequency. 0 for perfect homodyne and 1 for perfect heterodyne. This is a syntactic sugar for `w_s`. If this value is set, `w_s` is calculated from this value. (default : not used)
 * `sensor_phase_offset` : Sensor phase offset in radian. (default : 0)
+
+We also provide some syntactic sugar parameters.
+* `hetero_frequency` : Relative heterodyne frequency. 0 for perfect homodyne and 1 for perfect heterodyne. This is a syntactic sugar for `w_s`. If this value is set, `w_s` is calculated from this value. (default : not used)
+* `hetero_offset` : Relative heterodyne offset. 0 for 0 radian and 1 for 2pi radian. This is a syntactic sugar for `sensor_phase_offset`. If this value is set, `sensor_phase_offset` is calculated from this value. (default : not used)
+
 * `wave_function_type` : Modulation waveform. Refer following table for exact configuration. (default : sinusoidal)
 
 | `wave_function_type` | Sensor Modulation | Light Modulation | Low Pass Filtered |
