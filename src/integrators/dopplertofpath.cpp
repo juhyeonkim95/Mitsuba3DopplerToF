@@ -5,6 +5,7 @@
 #include <mitsuba/render/emitter.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/records.h>
+#include <mitsuba/render/waveform_utils.h>
 
 #ifndef WAVE_TYPE_SINUSOIDAL
 #define WAVE_TYPE_SINUSOIDAL 0
@@ -93,13 +94,13 @@ paths of arbitrary length to compute both direct and indirect illumination.
  */
 
 template <typename Float, typename Spectrum>
-class DopplerPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
+class DopplerToFPathIntegrator : public MonteCarloIntegrator<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(MonteCarloIntegrator, m_max_depth, m_rr_depth, m_hide_emitters, 
     m_spatial_correlation_method, m_time_sampling_method, m_time_intervals, m_path_correlation_depth, m_is_doppler_integrator)
     MI_IMPORT_TYPES(Scene, Sampler, Medium, Emitter, EmitterPtr, BSDF, BSDFPtr)
 
-    DopplerPathIntegrator(const Properties &props) : Base(props) {
+    DopplerToFPathIntegrator(const Properties &props) : Base(props) {
         m_is_doppler_integrator = true;
         m_time = props.get<ScalarFloat>("time", 0.0015f);
 
@@ -116,6 +117,23 @@ public:
             m_hetero_frequency = (m_sensor_modulation_frequency_mhz - m_illumination_modulation_frequency_mhz) * 1e6 * m_time;
         }
 
+        // modulation function waveform
+        std::string wave_function_type_str = props.get<std::string>("wave_function_type", "sinusoidal");
+
+        if(strcmp(wave_function_type_str.c_str(), "sinusoidal") == 0){
+            m_wave_function_type = EWaveformType::WAVE_TYPE_SINUSOIDAL;
+        }
+        else if(strcmp(wave_function_type_str.c_str(), "rectangular") == 0){
+            m_wave_function_type = EWaveformType::WAVE_TYPE_RECTANGULAR;
+        }
+        else if(strcmp(wave_function_type_str.c_str(), "triangular") == 0){
+            m_wave_function_type = EWaveformType::WAVE_TYPE_TRIANGULAR;
+        }
+        else if(strcmp(wave_function_type_str.c_str(), "trapezoidal") == 0){
+            m_wave_function_type = EWaveformType::WAVE_TYPE_TRAPEZOIDAL;
+        }
+
+
         m_sensor_modulation_function_type = props.get<uint32_t>("sensor_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
         m_illumination_modulation_function_type = props.get<uint32_t>("illumination_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
 
@@ -125,42 +143,7 @@ public:
         m_use_path_correlation = props.get<bool>("use_path_correlation", true);
     }
 
-    Float evalModulationFunctionValue(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: return dr::select(dr::abs(t-M_PI) > 0.5 * M_PI, 1, -1); //return dr::sign(dr::cos(t));
-            case WAVE_TYPE_TRIANGULAR: return dr::select(t < M_PI, 1 - 2 * t / M_PI, -3 + 2 * t / M_PI);
-        }
-        return dr::cos(t);
-    }
-
-    Float evalModulationFunctionValueLowPass(Float _t, uint32_t function_type) const{
-        Float t = dr::fmod(_t, 2 * M_PI);
-        switch(function_type){
-            case WAVE_TYPE_SINUSOIDAL: return dr::cos(t);
-            case WAVE_TYPE_RECTANGULAR: {
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return 2 - 4 * c; //a < 1 ? 1 - 2 * a : 1 - 2 * b;
-            }
-            case WAVE_TYPE_TRIANGULAR: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                return (4 * c * c * c - 6 * c * c + 1) * 2.0 / 3.0;
-            }
-            case WAVE_TYPE_TRAPEZOIDAL: {    
-                Float a = t / M_PI;
-                Float b = 2 - a;
-                Float c = dr::select(a < b, a, b);
-                Float r = 2 - 4 * c;
-                return dr::clamp(2.0 * r, -2.0, 2.0);
-            }
-        }
-        return dr::cos(t);
-    }
+    
 
     Float evalModulationWeight(Float ray_time, Float path_length) const
     {
@@ -413,7 +396,7 @@ public:
     // =============================================================
 
     std::string to_string() const override {
-        return tfm::format("PathIntegrator[\n"
+        return tfm::format("DopplerToFPathIntegrator[\n"
             "  max_depth = %u,\n"
             "  rr_depth = %u\n"
             "]", m_max_depth, m_rr_depth);
@@ -456,11 +439,12 @@ private:
     bool m_low_frequency_component_only;
     bool m_use_path_correlation;
 
+    EWaveformType m_wave_function_type;
 
-    uint32_t m_sensor_modulation_function_type;
-    uint32_t m_illumination_modulation_function_type;
+    // uint32_t m_sensor_modulation_function_type;
+    // uint32_t m_illumination_modulation_function_type;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(DopplerPathIntegrator, MonteCarloIntegrator)
-MI_EXPORT_PLUGIN(DopplerPathIntegrator, "Doppler Path Tracer integrator");
+MI_IMPLEMENT_CLASS_VARIANT(DopplerToFPathIntegrator, MonteCarloIntegrator)
+MI_EXPORT_PLUGIN(DopplerToFPathIntegrator, "Doppler Path Tracer integrator");
 NAMESPACE_END(mitsuba)

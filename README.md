@@ -4,10 +4,11 @@ Doppler Time-of-Flight Renderer
 ![visualization](assets/teaser.gif)
 
 This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
-Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/Mitsuba0.5ToFRenderer).
+Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/MitsubaDopplerToF).
 
 ## Install
 To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
+Our implementation only works on CUDA, so make sure to include CUDA as a backend in `mistuba.conf`.
 
 ## Parameter Explanation
 New integrator named `dopplertofpath` is added for Doppler ToF rendering.
