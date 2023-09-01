@@ -1,30 +1,75 @@
 Doppler Time-of-Flight Renderer
 ===================================
 ## About
-This is Mitsuba3 implementation of "Doppler Time-of-Rendering" submitted to SIGGRAPH Asia 2023.
-Please also check Mitsuba0.5 implementation at []here.
+![visualization](assets/teaser.gif)
 
-New integrator named `dopplerpath` is added.
-Because we implemented path correlation with custom repeated sampler, use `correlated` sampler in all cases.
+This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
+Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/Mitsuba0.5ToFRenderer).
+
+## Install
+To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
+
+## Parameter Explanation
+New integrator named `dopplertofpath` is added for Doppler ToF rendering.
+Followings are explanation for each parameter.
+
+### ToF Related
+* `time` : Exposure time in sec. (default : 0.0015)
+* `w_g` : Illumination modulation frequency in MHz. (default : 30)
+* `g_1` : Illumination modulation scale. (default : 0.5)
+* `g_0` : Illumination modulation offset. (default : 0.5)
+* `w_s` : Sensor frequency in MHz. (default : 30)
+* `hetero_frequency` : Relative heterodyne frequency. 0 for perfect homodyne and 1 for perfect heterodyne. This is a syntactic sugar for `w_s`. If this value is set, `w_s` is calculated from this value. (default : not used)
+* `sensor_phase_offset` : Sensor phase offset in radian. (default : 0)
+* `wave_function_type` : Modulation waveform. Refer following table for exact configuration. (default : sinusoidal)
+
+| `wave_function_type` | Sensor Modulation | Light Modulation | Low Pass Filtered |
+|-------------|-------------------|------------------|-------------------|
+| `sinusoidal`  | sinusoidal        | sinusoidal       | sinusoidal        |
+| `rectangular` | rectangular       | rectangular      | triangular        |
+| `triangular`  | triangular        | triangular       | Corr(tri, tri)    |
+| `trapezoidal` | trapezoidal       | delta            | trapezoidal       |
+
+* `low_frequency_component_only` : Whether to use low pass filtering for modulation functions. (default : true)
 
 
-To compile, follow the original Mitsuba3's compliation guide.
+### Sampling Related
+* `time_sampling_mode` : Times sampling method.
+    * `uniform` : uniform sampling
+    * `stratified` : stratified sampling
+    * `antithetic` : shifted antithetic sampling
+    * `antithetic_mirror` : mirrored antithetic sampling
+    * `analytic` : analytic integration (biased)
 
-Followings are some input parameters.
+* `antithetic_shifts` : User defined antithetic shifts. Multiple input is available separated by underbar. (e.g 0.5 for single antithetic sample or 0.12_0.35 two antithetic samples) (default : 0.5 for `antithetic`, 0.0 for `antithetic_mirror`)
+* `antithetic_shifts_number` : Number of antithetic shifts with equal interval. If this value is set, this is used instead of `antithetic_shifts`. This is also used for number of stratum for `stratified`. (default : 0)
+* `m_use_full_time_stratification` : Whether to use full stratification over time. If set to `true`, it works differently by `time_sampling_mode`. (default : false)
+    * `stratified` : correlated randomly over different stratum (Fig.8-(b) in the main paper)
+    * `antithetic` : use stratification for primal sample (Fig.8-(e) in the main paper)
+    * `antithetic_mirror` : use stratification for primal sample (Fig.8-(d) in the main paper)
 
-* `time` : exposure time in sec(default : 0.0015)
-* `w_g` : illumination frequency in MHz (default : 30)
-* `w_f` : sensor frequency in MHz (default : 30)
-* `hetero_frequency` : relative heterodyne frequency (1.0 : perfect heterodyne, 0.0 : perfec homodyne). only one of `w_f` or `hetero_frequency` should set.
-* `f_phase_offset` : sensor phase offset in radian (default : 0)
-* `sensor_modulation_function_type` : sensor modulation waveform (default : sinusoidal)
-* `illumination_modulation_function_type` : illumination modulation waveform (default : sinusoidal)
-* `antithetic_shift` : antithetic shift (default : 0.5)
-* `time_sampling_method` : time sampling method. one of uniform, stratified, antithetic, antithetic_mirror
-* `path_correlation_depth` : number of correlated path depth (0 : None, 1 : pixel) Currently only sampler correlation is supported.
+* `spatial_correlation_mode` : Spatial correlation methods. Note that methods start with `ray` explicitly correlate two paths in ray-by-ray style.
+    * `none` : no correlation
+    * `pixel` : repeat camera ray (use same pixel coordinate) between multiple rays
+    * `sampler` : repeat sampler between multiple rays
+    * `ray_position` : correlate intersection point between two rays
+    * `ray_sampler` : repeat sampler between two rays
+    * `ray_selective` : select one of `ray_position`, `ray_sampler` based on material property
 
+* `force_constant_attenuation` : Whether to force constant attenuation as [Heide, 2015] did. `true` is using zero-order Taylor approximation while `false` is using first-order Taylor approximation. Only used for `analytic`. (default : false)
+* `primal_antithetic_mis_power` : MIS power for primal and antithetic sample. Only used for other than `analytic`. Refer Sec 4.1 in supplementary material for details. (default : 1.0)
 
-We also included example configurations with result image in `config_example` folder.
+### Others
+* `image_offset` :  An output image can be negative, so add offset to make it positive.
 
-The code is still not refactored yet. Also some of notations are different from Mitsuba0.5 version.
-We will work on this later.
+## Usage
+```
+mitsuba -L error config_example/example.xml
+```
+We also included exhaustive example configurations with result image.
+
+## Citation
+If you find this useful for your research, please consider to cite:
+```
+(TBA)
+```

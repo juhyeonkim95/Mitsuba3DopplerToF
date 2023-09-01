@@ -106,17 +106,21 @@ public:
         m_illumination_modulation_frequency_mhz = props.get<ScalarFloat>("w_g", 30.0f);
         m_illumination_modulation_scale = props.get<ScalarFloat>("g_1", 0.5f);
         m_illumination_modulation_offset = props.get<ScalarFloat>("g_0", 0.5f);
+        m_sensor_modulation_frequency_mhz = props.get<ScalarFloat>("w_s", 30.0f);
+        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("sensor_phase_offset", 0.0f);
 
-        m_sensor_modulation_frequency_mhz = props.get<ScalarFloat>("w_f", 30.0f);
-        m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", 1.0f);
-        m_sensor_modulation_frequency_mhz = m_illumination_modulation_frequency_mhz + 1 / m_time * 1e-6;
+        m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", -1000.0f);
+        if (m_hetero_frequency > -1000.0f){
+            m_sensor_modulation_frequency_mhz = m_illumination_modulation_frequency_mhz + m_hetero_frequency / m_time * 1e-6;
+        } else {
+            m_hetero_frequency = (m_sensor_modulation_frequency_mhz - m_illumination_modulation_frequency_mhz) * 1e6 * m_time;
+        }
 
         m_sensor_modulation_function_type = props.get<uint32_t>("sensor_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
         m_illumination_modulation_function_type = props.get<uint32_t>("illumination_modulation_function_type", WAVE_TYPE_SINUSOIDAL);
 
         m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
         m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
-        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("f_phase_offset", 0.0f);
         m_low_frequency_component_only = props.get<bool>("low_frequency_component_only", true);
         m_use_path_correlation = props.get<bool>("use_path_correlation", true);
     }

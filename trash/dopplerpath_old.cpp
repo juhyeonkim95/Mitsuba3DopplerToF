@@ -32,7 +32,7 @@ public:
 
         m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
         m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
-        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("f_phase_offset", 0.0f);
+        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("sensor_phase_offset", 0.0f);
 
 
         m_low_frequency_component_only = props.get<bool>("low_frequency_component_only", true);

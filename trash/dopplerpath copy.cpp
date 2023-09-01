@@ -113,7 +113,7 @@ public:
 
         m_sensor_modulation_scale = props.get<ScalarFloat>("f_1", 0.5f);
         m_sensor_modulation_offset = props.get<ScalarFloat>("f_0", 0.5f);
-        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("f_phase_offset", 0.0f);
+        m_sensor_modulation_phase_offset = props.get<ScalarFloat>("sensor_phase_offset", 0.0f);
         m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", 0.5f);
         m_antithetic_shift_number = props.get<uint32_t>("antithetic_shift_number", 0);
         m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_SYSTEMATIC);
