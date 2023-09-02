@@ -463,10 +463,9 @@ public:
               t1 = m_keyframes[1].time,
               t  = dr::minimum(dr::maximum((time - t0) / (t1 - t0), 0.f), 1.f);
 
-
         return Transform<Point<T, 4>>(m_keyframes[0].transform * (1-t) + m_keyframes[1].transform * t);
 
-
+        // Default Mitsuba implementation --> seems inaccurate!
         // Interpolate the scale matrix
         Matrix3f scale0 = m_keyframes[0].scale,
                  scale1 = m_keyframes[1].scale,

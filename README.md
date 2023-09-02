@@ -1,4 +1,4 @@
-Doppler Time-of-Flight Renderer
+Mitsuba3 Doppler Time-of-Flight Renderer
 ===================================
 ## About
 ![visualization](assets/teaser.gif)
@@ -64,6 +64,12 @@ Followings are parameters used in `correlated` sampler.
     * `antithetic_mirror` : use stratification for primal sample (Fig.8-(d) in the main paper)
 
 Note that correlated sampler generate repeated random numbers, and `time_sampling_method` and `antithetic_shift` actually decide how to transform this into specific time samples.
+
+## Implemention of Motion Blur
+To simulate Doppler ToF rendering, we implemented motion blur which is not implemented in original Mitsuba3.
+We exploit OptiX motion blur functionalities for implementation.
+The default Mitsuba3 interpolation on transformation matrix seems to be inaccurate, we used a simple linear interpolation (check `transform.h` line 466).
+For scene formatting, we tried to be similar with Mitsuba0.5 version.
 
 ## Usage
 ```
