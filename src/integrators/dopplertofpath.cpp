@@ -76,25 +76,12 @@ public:
         return s_t * g_t;
     }
 
-    std::pair<Spectrum, Bool> sample_correlated(const Scene *scene,
-                                     Sampler *sampler,
-                                     const RayDifferential3f &ray1_,
-                                     const RayDifferential3f &ray2_,
-                                     const Medium * medium,
-                                     Float * aovs,
-                                     Bool active) const override {
-        MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
-        // Not implemented yet
-
-    }
-
     std::pair<Spectrum, Bool> sample(const Scene *scene,
                                      Sampler *sampler,
                                      const RayDifferential3f &ray_,
                                      const Medium * /* medium */,
                                      Float * /* aovs */,
-                                     Bool active,
-                                     Float ray_time) const {
+                                     Bool active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
 
         if (unlikely(m_max_depth == 0))
@@ -103,7 +90,6 @@ public:
         // --------------------- Configure loop state ----------------------
 
         Ray3f ray                     = Ray3f(ray_);
-        ray.time = ray_time;
         ray.time = dr::select(ray.time < m_time, ray.time, ray.time - m_time);
 
         Spectrum throughput           = 1.f;
