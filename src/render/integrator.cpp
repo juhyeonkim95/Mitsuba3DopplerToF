@@ -15,18 +15,6 @@
 #include <mitsuba/render/spiral.h>
 #include <nanothread/nanothread.h>
 
-#ifndef TIME_SAMPLING_UNIFORM
-#define TIME_SAMPLING_UNIFORM 0
-#define TIME_SAMPLING_STRATIFIED 1
-#define TIME_SAMPLING_ANTITHETIC 2
-#define TIME_SAMPLING_ANTITHETIC_MIRROR 3
-#define TIME_SAMPLING_PERIODIC 4
-#define TIME_SAMPLING_REGULAR 5
-#define SPATIAL_CORRELATION_NONE 0
-#define SPATIAL_CORRELATION_PIXEL 1
-#define SPATIAL_CORRELATION_SAMPLER 2
-#endif
-
 NAMESPACE_BEGIN(mitsuba)
 
 // -----------------------------------------------------------------------------
@@ -66,17 +54,29 @@ MI_VARIANT void Integrator<Float, Spectrum>::cancel() {
 MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Properties &props)
     : Base(props) {
 
-        
-    m_time_sampling_method = props.get<uint32_t>("time_sampling_method", TIME_SAMPLING_ANTITHETIC);
-    m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
     m_is_doppler_integrator = props.get<bool>("is_doppler_integrator", false);
+    std::string time_sampling_method_str = props.get<std::string>("time_sampling_method", "antithetic");
+    if(strcmp(time_sampling_method_str.c_str(), "uniform") == 0){
+        m_time_sampling_method = ETimeSampling::TIME_SAMPLING_UNIFORM;
+    }
+    else if(strcmp(time_sampling_method_str.c_str(), "stratified") == 0){
+        m_time_sampling_method = ETimeSampling::TIME_SAMPLING_STRATIFIED;
+    }
+    else if(strcmp(time_sampling_method_str.c_str(), "antithetic") == 0){
+        m_time_sampling_method = ETimeSampling::TIME_SAMPLING_ANTITHETIC;
+    }
+    else if(strcmp(time_sampling_method_str.c_str(), "antithetic_mirror") == 0){
+        m_time_sampling_method = ETimeSampling::TIME_SAMPLING_ANTITHETIC_MIRROR;
+    }
     
     ScalarFloat default_shift = 0.0;
-    if(m_time_sampling_method == TIME_SAMPLING_ANTITHETIC){
+    if(m_time_sampling_method == ETimeSampling::TIME_SAMPLING_ANTITHETIC){
         default_shift = 0.5;
     }
     m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
+
     m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
+    // m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
 
 
     m_block_size = props.get<uint32_t>("block_size", 0);
@@ -549,6 +549,17 @@ SamplingIntegrator<Float, Spectrum>::sample(const Scene * /* scene */,
                                             Float * /* aovs */,
                                             Mask /* active */) const {
     NotImplementedError("sample");
+}
+
+MI_VARIANT std::pair<Spectrum, typename SamplingIntegrator<Float, Spectrum>::Mask>
+SamplingIntegrator<Float, Spectrum>::sample_correlated(const Scene * /* scene */,
+                                            Sampler * /* sampler */,
+                                            const RayDifferential3f & /* ray1 */,
+                                            const RayDifferential3f & /* ray2 */,
+                                            const Medium * /* medium */,
+                                            Float * /* aovs */,
+                                            Mask /* active */) const {
+    NotImplementedError("sample_correlated");
 }
 
 // -----------------------------------------------------------------------------

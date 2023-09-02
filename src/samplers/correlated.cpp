@@ -5,65 +5,6 @@
 
 NAMESPACE_BEGIN(mitsuba)
 
-/**!
-
-.. _sampler-independent:
-
-Independent sampler (:monosp:`independent`)
--------------------------------------------
-
-.. pluginparameters::
-
- * - sample_count
-   - |int|
-   - Number of samples per pixel (Default: 4)
-
- * - seed
-   - |int|
-   - Seed offset (Default: 0)
-
-The independent sampler produces a stream of independent and uniformly
-distributed pseudorandom numbers. Internally, it relies on the
-`PCG32 random number generator <https://www.pcg-random.org/>`_
-by Melissa O’Neill.
-
-This is the most basic sample generator; because no precautions are taken to avoid
-sample clumping, images produced using this plugin will usually take longer to converge.
-Looking at the figures below where samples are projected onto a 2D unit square, we see that there
-are both regions that don't receive many samples (i.e. we don't know much about the behavior of
-the function there), and regions where many samples are very close together (which likely have very
-similar values), which will result in higher variance in the rendered image.
-
-This sampler is initialized using a deterministic procedure, which means that subsequent runs
-of Mitsuba should create the same image. In practice, when rendering with multiple threads
-and/or machines, this is not true anymore, since the ordering of samples is influenced by the
-operating system scheduler. Although these should be absolutely negligible, with relative errors
-on the order of the machine epsilon (:math:`6\cdot 10^{-8}`) in single precision.
-
-.. subfigstart::
-.. subfigure:: ../../resources/data/docs/images/sampler/independent_1024_samples.svg
-   :caption: 1024 samples projected onto the first two dimensions.
-.. subfigure:: ../../resources/data/docs/images/sampler/independent_64_samples_and_proj.svg
-   :caption: 64 samples projected onto the first two dimensions and their
-             projection on both 1D axis (top and right plot).
-.. subfigend::
-   :label: fig-independent-pattern
-
-.. tabs::
-    .. code-tab:: xml
-        :name: independent-sampler
-
-        <sampler type="independent">
-            <integer name="sample_count" value="64"/>
-        </sampler>
-
-    .. code-tab:: python
-
-        'type': 'independent',
-        'sample_count': '64'
-
- */
-
 template <typename Float, typename Spectrum>
 class CorrelatedSampler final : public PCG32Sampler<Float, Spectrum> {
 public:
@@ -77,7 +18,6 @@ public:
         m_time_correlate_number = props.get<int>("time_correlate_number", 2);
         m_path_correlate_number = props.get<int>("path_correlate_number", m_time_correlate_number);
 
-        
         m_use_stratified_sampling_for_each_interval = props.get<bool>("use_stratified_sampling_for_each_interval", true);
         m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", 0.0);
 
@@ -154,7 +94,7 @@ public:
         return Point2f(f1, f2);
     }
 
-    Float next_1d_time(Mask active = true, int strategy = TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) override {
+    Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) override {
         Assert(seeded());
         // (1) Uniform sampling -> Just use m_rng
         if(strategy == TIME_SAMPLING_UNIFORM){
@@ -162,45 +102,19 @@ public:
         }
         
         UInt32 sample_indices = current_sample_index();
-        // UInt32 perm_seed = m_permutation_seed + m_dimension_index++;
-
-        // // Shuffle the samples order
-        // UInt32 p = permute_kensler(sample_indices / 2, m_sample_count, perm_seed, active);
-
-        // // Add a random perturbation
-        // Float j = m_rng.template next_float<Float>(active);
-
-        // return (p + j) * dr::rcp(ScalarFloat(m_sample_count));
-
-        // Assert(seeded());
-        // int n_stratum = m_sample_count / 2;
-
-        // UInt32 sample_indices = current_sample_index();
-        // UInt32 perm_seed = m_permutation_seed + m_dimension_index++;
-        // UInt32 sample_indices_temp = permute_kensler(sample_indices / 2, n_stratum, perm_seed, active);
-        // UInt32 p = sample_indices_temp;
-        
-        // Float r = m_rng.template next_float<Float>(active);
-        // Float j = (p + r) * dr::rcp(ScalarFloat(n_stratum));
-
-        // UInt32 p2 = sample_indices % 2;//permute_kensler(sample_indices, m_sample_count, perm_seed, active);
-        // // r = m_rng.template next_float<Float>(active);
-        // return (p2 + j) * 0.5;
-        
         Float r = 0.0;
 
-        if ((strategy == TIME_SAMPLING_UNIFORM) || (strategy == TIME_SAMPLING_STRATIFIED)){
+        // Prepare random numbers
+        if (strategy == ETimeSampling::TIME_SAMPLING_STRATIFIED){
             r = m_rng.template next_float<Float>(active);
         } else {
             r = m_rng_time.template next_float<Float>(active);
         }
-        //m_use_stratified_sampling_for_each_interval = ;
 
         if(m_use_stratified_sampling_for_each_interval){
-            
             int n_stratum = m_sample_count / m_time_correlate_number;
-
-            if(strategy == TIME_SAMPLING_STRATIFIED){
+            if(strategy == ETimeSampling::TIME_SAMPLING_STRATIFIED){
+                // use permutation
                 UInt32 perm_seed = m_permutation_seed + m_dimension_index++;
                 UInt32 p1 = permute_kensler(sample_indices / m_time_correlate_number, n_stratum, perm_seed, active);
                 
@@ -208,79 +122,38 @@ public:
                 UInt32 p2 = permute_kensler(sample_indices / m_time_correlate_number, n_stratum, perm_seed, active);
                 
                 UInt32 p = dr::select(dr::neq(sample_indices % m_time_correlate_number, 0), p1, p2);
-
-                // p = p / m_time_correlate_number;
                 r = (p + r) / n_stratum;
             } else {
                 UInt32 p = sample_indices / m_time_correlate_number;
                 r = (p + r) / n_stratum;
             }
         }
-
         
-        // (2) Stratified
-        if(strategy == TIME_SAMPLING_STRATIFIED){
-            // return r;
-            // UInt32 perm_seed = m_permutation_seed + m_dimension_index++;
-
-            // // Shuffle the samples order
-            UInt32 p = sample_indices % m_time_correlate_number;//permute_kensler(sample_indices, m_sample_count, perm_seed, active);
-            // // r = m_rng.template next_float<Float>(active);
+        if(strategy == ETimeSampling::TIME_SAMPLING_STRATIFIED){
+            UInt32 p = sample_indices % m_time_correlate_number;
             return (p + r) * dr::rcp(ScalarFloat(m_time_correlate_number));
         }
-        else if(strategy == TIME_SAMPLING_ANTITHETIC){
-            Assert(m_time_correlate_number == 2);
-            // use stratified sampling
-            // if(m_use_stratified_sampling_for_each_interval){
-            //     int n_stratum = m_sample_count / m_time_correlate_number;
-            //     UInt32 p = sample_indices / m_time_correlate_number;
-            //     Float j = m_rng_time.template next_float<Float>(active);
-            //     Float r = (p + j) / n_stratum;
-            //     Float r2 = r + antithetic_shift;
-            //     UInt32 remainder = sample_indices % m_time_correlate_number;
-            //     return dr::select(dr::neq(remainder, 1), r, r2);
-            // }
-            // Float r = m_rng_time.template next_float<Float>(active);
-            Float r2 = r + antithetic_shift;
-            UInt32 remainder = sample_indices % m_time_correlate_number;
-            return dr::select(dr::neq(remainder, 1), r, r2);
+        else if(strategy == ETimeSampling::TIME_SAMPLING_ANTITHETIC){
+            if(m_time_correlate_number == 2){
+                Float r2 = r + antithetic_shift;
+                UInt32 remainder = sample_indices % m_time_correlate_number;
+                return dr::select(dr::neq(remainder, 1), r, r2);
+            } else {
+                UInt32 remainder = sample_indices % m_time_correlate_number;
+                return r + Float(remainder) / Float(m_time_correlate_number);
+            }
         }
-        else if(strategy == TIME_SAMPLING_ANTITHETIC_MIRROR){
+        else if(strategy == ETimeSampling::TIME_SAMPLING_ANTITHETIC_MIRROR){
             Assert(m_time_correlate_number == 2);
-            // use stratified sampling
-            // if(m_use_stratified_sampling_for_each_interval){
-            //     int n_stratum = m_sample_count / m_time_correlate_number;
-            //     UInt32 p = sample_indices / m_time_correlate_number;
-            //     Float j = m_rng_time.template next_float<Float>(active);
-            //     Float r = (p + j) / n_stratum;
-            //     Float r2 = 1.0 - r + antithetic_shift;
-            //     UInt32 remainder = sample_indices % m_time_correlate_number;
-            //     return dr::select(dr::neq(remainder, 1), r, r2);
-            // }
-            // Float r = m_rng_time.template next_float<Float>(active);
             Float r2 = 1.0 - r + antithetic_shift;
             UInt32 remainder = sample_indices % m_time_correlate_number;
             return dr::select(dr::neq(remainder, 1), r, r2);
         }
-        else if(strategy == TIME_SAMPLING_PERIODIC){
-            // use stratified sampling
-            // if(m_use_stratified_sampling_for_each_interval){
-            //     int n_stratum = m_sample_count / m_time_correlate_number;
-            //     UInt32 p = sample_indices / m_time_correlate_number;
-            //     Float j = m_rng_time.template next_float<Float>(active);
-            //     Float r = (p + j) / n_stratum;
-                
-            //     UInt32 remainder = sample_indices % m_time_correlate_number;
-            //     UInt32 sample_indices = current_sample_index();
-            //     return r + (Float(remainder)) / Float(m_time_correlate_number);
-            // }
-
-            // Float r = m_rng_time.template next_float<Float>(active);
+        else if(strategy == ETimeSampling::TIME_SAMPLING_PERIODIC){
             UInt32 remainder = sample_indices % m_time_correlate_number;
             return r + Float(remainder) / Float(m_time_correlate_number);
         }
-        
-        // Float r = m_rng.template next_float<Float>(active);
+    
         return r;
     }
 
@@ -290,13 +163,6 @@ public:
         Float r1 = m_rng_path.template next_float<Float>(active);
         Float r2 = m_rng.template next_float<Float>(active);
         return dr::select(correlate, r1, r2);
-
-        // if(correlate){
-        //     Float r = m_rng_path.template next_float<Float>(active);
-        //     return r;
-        // }
-        // Float r = m_rng.template next_float<Float>(active);
-        // return r;
     }
 
     Point2f next_2d_correlate(Mask active = true, Bool correlate = false) override {
@@ -319,9 +185,9 @@ public:
     MI_DECLARE_CLASS()
 
 protected:
-    mitsuba::PCG32<UInt32> m_rng_time;
+    mitsuba::PCG32<UInt32> m_rng_time;  // correlated time sampler
     int m_time_correlate_number;
-    mitsuba::PCG32<UInt32> m_rng_path;
+    mitsuba::PCG32<UInt32> m_rng_path;  // correlated path sampler
     int m_path_correlate_number;
     ScalarFloat m_antithetic_shift;
     bool m_use_stratified_sampling_for_each_interval;

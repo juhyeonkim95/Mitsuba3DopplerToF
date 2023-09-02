@@ -57,10 +57,10 @@ add_library(mitsuba-render OBJECT
                    ${INC_DIR}/fresnel.h
   imageblock.cpp   ${INC_DIR}/imageblock.h
   integrator.cpp   ${INC_DIR}/integrator.h
-                   ${INC_DIR}/waveform_utils.h
-  transientintegrator.cpp   ${INC_DIR}/transientintegrator.h
-  # dopplerintegrator.cpp   ${INC_DIR}/dopplerintegrator.h
                    ${INC_DIR}/interaction.h
+                   ${INC_DIR}/waveform_utils.h
+  # transientintegrator.cpp   ${INC_DIR}/transientintegrator.h
+  # dopplerintegrator.cpp   ${INC_DIR}/dopplerintegrator.h
   medium.cpp       ${INC_DIR}/medium.h
   mesh.cpp         ${INC_DIR}/mesh.h
   microfacet.cpp   ${INC_DIR}/microfacet.h

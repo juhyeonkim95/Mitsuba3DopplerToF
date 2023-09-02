@@ -114,7 +114,7 @@ public:
         m_permutation_seed = compute_per_sequence_seed(seed);
     }
 
-    Float next_1d_time(Mask active = true, int strategy = TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift=0.0) override {
+    Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift=0.0) override {
         Assert(seeded());
         
         UInt32 sample_indices = current_sample_index();

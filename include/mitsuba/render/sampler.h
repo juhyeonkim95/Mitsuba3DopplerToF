@@ -8,19 +8,30 @@
 #include <mitsuba/core/random.h>
 #include <drjit/loop.h>
 
-#ifndef TIME_SAMPLING_UNIFORM
-#define TIME_SAMPLING_UNIFORM 0
-#define TIME_SAMPLING_STRATIFIED 1
-#define TIME_SAMPLING_ANTITHETIC 2
-#define TIME_SAMPLING_ANTITHETIC_MIRROR 3
-#define TIME_SAMPLING_PERIODIC 4
-#define TIME_SAMPLING_REGULAR 5
-#define SPATIAL_CORRELATION_NONE 0
-#define SPATIAL_CORRELATION_PIXEL 1
-#define SPATIAL_CORRELATION_SAMPLER 2
-#endif
+// #ifndef TIME_SAMPLING_UNIFORM
+// #define TIME_SAMPLING_UNIFORM 0
+// #define TIME_SAMPLING_STRATIFIED 1
+// #define TIME_SAMPLING_ANTITHETIC 2
+// #define TIME_SAMPLING_ANTITHETIC_MIRROR 3
+// #define TIME_SAMPLING_PERIODIC 4
+// #define TIME_SAMPLING_REGULAR 5
+// #define SPATIAL_CORRELATION_NONE 0
+// #define SPATIAL_CORRELATION_PIXEL 1
+// #define SPATIAL_CORRELATION_SAMPLER 2
+// #endif
+
+
 
 NAMESPACE_BEGIN(mitsuba)
+
+enum ETimeSampling{
+    TIME_SAMPLING_UNIFORM = 0,
+    TIME_SAMPLING_STRATIFIED = 1,
+    TIME_SAMPLING_ANTITHETIC = 2,
+    TIME_SAMPLING_ANTITHETIC_MIRROR = 3,
+    TIME_SAMPLING_PERIODIC = 4,
+    TIME_SAMPLING_REGULAR = 5
+};
 
 /**
  * \brief Base class of all sample generators.
@@ -117,7 +128,7 @@ public:
     virtual void advance();
 
     /// Retrieve the next component value from the current sample
-    virtual Float next_1d_time(Mask active = true, int strategy = TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) { return next_1d(); }
+    virtual Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) { return next_1d(); }
 
     /// Retrieve the next component value from the current sample
     virtual Float next_1d(Mask active = true);

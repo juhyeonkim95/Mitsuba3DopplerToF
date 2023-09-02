@@ -21,10 +21,9 @@ Followings are explanation for each parameter.
 * `g_0` : Illumination modulation offset. (default : 0.5)
 * `w_s` : Sensor frequency in MHz. (default : 30)
 * `sensor_phase_offset` : Sensor phase offset in radian. (default : 0)
-* We also provide some syntactic sugar parameters.
+* We also provide some syntactic sugar parameters with normalization.
     * `hetero_frequency` : Relative heterodyne frequency. 0 for perfect homodyne and 1 for perfect heterodyne. This is a syntactic sugar for `w_s`. If this value is set, `w_s` is calculated from this value. (default : not used)
     * `hetero_offset` : Relative heterodyne offset. 0 for 0 radian and 1 for 2pi radian. This is a syntactic sugar for `sensor_phase_offset`. If this value is set, `sensor_phase_offset` is calculated from this value. (default : not used)
-
 
 * `wave_function_type` : Modulation waveform. Refer following table for exact configuration. (default : sinusoidal)
 
@@ -39,33 +38,32 @@ Followings are explanation for each parameter.
 
 
 ### Sampling Related
-* `time_sampling_mode` : Times sampling method.
+* `time_sampling_method` : Times sampling method.
     * `uniform` : uniform sampling
     * `stratified` : stratified sampling
     * `antithetic` : shifted antithetic sampling
     * `antithetic_mirror` : mirrored antithetic sampling
-    * `analytic` : analytic integration (biased)
 
-* `antithetic_shifts` : User defined antithetic shifts. Multiple input is available separated by underbar. (e.g 0.5 for single antithetic sample or 0.12_0.35 two antithetic samples) (default : 0.5 for `antithetic`, 0.0 for `antithetic_mirror`)
-* `antithetic_shifts_number` : Number of antithetic shifts with equal interval. If this value is set, this is used instead of `antithetic_shifts`. This is also used for number of stratum for `stratified`. (default : 0)
-* `m_use_full_time_stratification` : Whether to use full stratification over time. If set to `true`, it works differently by `time_sampling_mode`. (default : false)
+* `antithetic_shift` : User defined antithetic shift. (default : 0.5 for `antithetic`, 0.0 for `antithetic_mirror`)
+
+Unlike Mitsuba0.5, we only support sampler-level correlation.
+This exploits the advantage of parallelization at the most.
+In other words, we do not explicitly correlate ray-by-ray fashion. (e.g `ray_position` or `ray_sampler` in Mitsuba0.5 version)
+We are planning to add this implementation in future.
+
+
+### Correlated Sampler
+We implemented path correlation with custom repeated sampler, so use `correlated` sampler in all cases.
+Followings are parameters used in `correlated` sampler.
+
+* `time_correlate_number` : The number of correlated time random generator. (default : 2)
+* `path_correlate_number` : The number of correlated path random generator. (default : `time_correlate_number`)
+* `use_stratified_sampling_for_each_interval` : Whether to use full stratification over time. If set to `true`, it works differently by `time_sampling_mode`. (default : true)
     * `stratified` : correlated randomly over different stratum (Fig.8-(b) in the main paper)
     * `antithetic` : use stratification for primal sample (Fig.8-(e) in the main paper)
     * `antithetic_mirror` : use stratification for primal sample (Fig.8-(d) in the main paper)
 
-* `spatial_correlation_mode` : Spatial correlation methods. Note that methods start with `ray` explicitly correlate two paths in ray-by-ray style.
-    * `none` : no correlation
-    * `pixel` : repeat camera ray (use same pixel coordinate) between multiple rays
-    * `sampler` : repeat sampler between multiple rays
-    * `ray_position` : correlate intersection point between two rays
-    * `ray_sampler` : repeat sampler between two rays
-    * `ray_selective` : select one of `ray_position`, `ray_sampler` based on material property
-
-* `force_constant_attenuation` : Whether to force constant attenuation as [Heide, 2015] did. `true` is using zero-order Taylor approximation while `false` is using first-order Taylor approximation. Only used for `analytic`. (default : false)
-* `primal_antithetic_mis_power` : MIS power for primal and antithetic sample. Only used for other than `analytic`. Refer Sec 4.1 in supplementary material for details. (default : 1.0)
-
-### Others
-* `image_offset` :  An output image can be negative, so add offset to make it positive.
+Note that correlated sampler generate repeated random numbers, and `time_sampling_method` and `antithetic_shift` actually decide how to transform this into specific time samples.
 
 ## Usage
 ```

@@ -203,6 +203,14 @@ public:
                                              const Medium *medium = nullptr,
                                              Float *aovs = nullptr,
                                              Mask active = true) const;
+    
+    virtual std::pair<Spectrum, Mask> sample_correlated(const Scene *scene,
+                                             Sampler *sampler,
+                                             const RayDifferential3f &ray1,
+                                             const RayDifferential3f &ray2,
+                                             const Medium *medium = nullptr,
+                                             Float *aovs = nullptr,
+                                             Mask active = true) const;
 
     // =========================================================================
     //! @{ \name Integrator interface implementation
@@ -256,7 +264,7 @@ protected:
     uint32_t m_samples_per_pass;
 
     bool m_is_doppler_integrator;
-    uint32_t m_time_sampling_method;
+    ETimeSampling m_time_sampling_method;
     uint32_t m_spatial_correlation_method;
     uint32_t m_time_intervals;
     ScalarFloat m_antithetic_shift;

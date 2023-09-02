@@ -27,12 +27,11 @@ public:
         m_sensor_modulation_phase_offset = props.get<ScalarFloat>("sensor_phase_offset", 0.0f);
         
         // syntactic sugar
-        hetero_offset = props.get<ScalarFloat>("hetero_offset", -1000.0f);
-        if(hetero_offset != -1000.0f){
-            m_sensor_modulation_phase_offset = hetero_offset * 2 * M_PI;
+        if(props.has_property("hetero_offset")){
+            m_sensor_modulation_phase_offset = props.get<ScalarFloat>("hetero_offset", 0.0) * 2 * M_PI;
         }
-        m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", -1000.0f);
-        if (m_hetero_frequency > -1000.0f){
+        if(props.has_property("hetero_frequency")){
+            m_hetero_frequency = props.get<ScalarFloat>("hetero_frequency", 1.0);
             m_sensor_modulation_frequency_mhz = m_illumination_modulation_frequency_mhz + m_hetero_frequency / m_time * 1e-6;
         } else {
             m_hetero_frequency = (m_sensor_modulation_frequency_mhz - m_illumination_modulation_frequency_mhz) * 1e6 * m_time;
@@ -77,27 +76,27 @@ public:
         return s_t * g_t;
     }
 
-    std::pair<Spectrum, Bool> sample(const Scene *scene,
+    std::pair<Spectrum, Bool> sample_correlated(const Scene *scene,
                                      Sampler *sampler,
-                                     const RayDifferential3f &ray_,
+                                     const RayDifferential3f &ray1_,
+                                     const RayDifferential3f &ray2_,
                                      const Medium * medium,
                                      Float * aovs,
                                      Bool active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
+        // Not implemented yet
 
-        auto [spec, mask] = sample_helper(scene, sampler, ray_, medium, aovs, active, ray_.time);
-        return {
-            spec, mask
-        };
     }
 
-    std::pair<Spectrum, Bool> sample_helper(const Scene *scene,
+    std::pair<Spectrum, Bool> sample(const Scene *scene,
                                      Sampler *sampler,
                                      const RayDifferential3f &ray_,
                                      const Medium * /* medium */,
                                      Float * /* aovs */,
                                      Bool active,
                                      Float ray_time) const {
+        MI_MASKED_FUNCTION(ProfilerPhase::SamplingIntegratorSample, active);
+
         if (unlikely(m_max_depth == 0))
             return { 0.f, false };
 
@@ -153,7 +152,7 @@ public:
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
             
-            path_length += dr::select(si.is_valid(), si.t, 0);
+            path_length += dr::select(si.is_valid() * eta, si.t, 0);
 
             // ---------------------- Direct emission ----------------------
 
@@ -215,9 +214,6 @@ public:
 
                 wo = si.to_local(ds.d);
             }
-
-            // result[active_em] = Float(1.5);
-            // break;
 
             // ------ Evaluate BSDF * cos(theta) and sample direction -------
 
@@ -299,7 +295,7 @@ public:
             /* valid = */ valid_ray
         };
     }
-
+    
     //! @}
     // =============================================================
 
@@ -329,6 +325,7 @@ public:
         else
             return dr::fmadd(a, b, c);
     }
+    
 
     MI_DECLARE_CLASS()
 private:
@@ -344,5 +341,5 @@ private:
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(DopplerToFPathIntegrator, MonteCarloIntegrator)
-MI_EXPORT_PLUGIN(DopplerToFPathIntegrator, "Doppler Path Tracer integrator");
+MI_EXPORT_PLUGIN(DopplerToFPathIntegrator, "Doppler ToF Path Tracer integrator");
 NAMESPACE_END(mitsuba)
