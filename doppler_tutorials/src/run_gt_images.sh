@@ -3,6 +3,7 @@ basedir=/media/juhyeon/Data1/Mitsuba3Python_final/
 python main_compare_time_spatial_sampling_methods.py --scene_name cornell-box --wave_function_type sinusoidal --basedir $basedir
 python main_compare_time_spatial_sampling_methods.py --scene_name cornell-box --wave_function_type rectangular --basedir $basedir
 python main_compare_time_spatial_sampling_methods.py --scene_name cornell-box --wave_function_type triangular --basedir $basedir
+python main_compare_time_spatial_sampling_methods.py --scene_name cornell-box --wave_function_type trapezoidal --basedir $basedir
 max=5
 for i in `seq 2 $max`
 do

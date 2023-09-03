@@ -113,7 +113,7 @@ def main():
         # Experiment 1. --> different methods with different correlation depths
         elif args.expnumber == 1:
             time_sampling_methods = ["uniform", "stratified", "antithetic", "antithetic_mirror"]
-            path_correlation_depths = [0, 1, 2, 16]   # 16 : full
+            path_correlation_depths = [16]   # 16 : full
             for time_sampling_method in time_sampling_methods:
                 for path_correlation_depth in path_correlation_depths:
                     expname = "%s_path_corr_depth_%d" % (time_sampling_method, path_correlation_depth)
@@ -121,15 +121,34 @@ def main():
                         expname=expname, 
                         total_spp=scene_config.get("spp"),
                         time_sampling_method=time_sampling_method,
-                        path_correlation_depth=path_correlation_depths,
+                        path_correlation_depth=path_correlation_depth,
                         base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison"),
                         exit_if_file_exists=True,
                         export_png=True,
                         **common_configs
                     )
-
-        # Experiment 2. --> different antithetic shifts
+        
+        # Experiment 2. --> different methods with different correlation depths WITHOUT further stratification
         elif args.expnumber == 2:
+            time_sampling_methods = ["stratified", "antithetic", "antithetic_mirror"]
+            path_correlation_depths = [16]   # 16 : full
+            for time_sampling_method in time_sampling_methods:
+                for path_correlation_depth in path_correlation_depths:
+                    expname = "%s_path_corr_depth_%d_no_further_stratification" % (time_sampling_method, path_correlation_depth)
+                    run_scene_doppler_tof(
+                        expname=expname, 
+                        total_spp=scene_config.get("spp"),
+                        time_sampling_method=time_sampling_method,
+                        path_correlation_depth=path_correlation_depth,
+                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison"),
+                        exit_if_file_exists=True,
+                        use_stratified_sampling_for_each_interval=False,
+                        export_png=True,
+                        **common_configs
+                    )
+
+        # Experiment 3. --> different antithetic shifts
+        elif args.expnumber == 3:
             time_sampling_methods = ["antithetic", "antithetic_mirror"]
             for time_sampling_method in time_sampling_methods:
                 for antithetic_shift in antithetic_shifts:
@@ -146,8 +165,8 @@ def main():
                         **common_configs
                     )
 
-        # Experiment 3. --> different correlation depth
-        elif args.expnumber == 3:
+        # Experiment 4. --> different correlation depth
+        elif args.expnumber == 4:
             pass
                     
 
