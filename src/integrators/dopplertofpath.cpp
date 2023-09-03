@@ -138,7 +138,7 @@ public:
                                      /* ray_flags = */ +RayFlags::All,
                                      /* coherent = */ dr::eq(depth, 0u));
             
-            path_length += dr::select(si.is_valid() * eta, si.t, 0);
+            path_length += dr::select(si.is_valid(), si.t * eta, 0);
 
             // ---------------------- Direct emission ----------------------
 

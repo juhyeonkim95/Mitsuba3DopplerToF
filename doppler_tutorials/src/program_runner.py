@@ -7,36 +7,6 @@ from utils.image_utils import *
 from tqdm import tqdm, trange
 
 
-TIME_SAMPLING_UNIFORM = 0
-TIME_SAMPLING_STRATIFIED = 1
-TIME_SAMPLING_ANTITHETIC = 2
-TIME_SAMPLING_ANTITHETIC_MIRROR = 3
-TIME_SAMPLING_PERIODIC = 4
-TIME_SAMPLING_REGULAR = 5
-
-
-SPATIAL_CORRELATION_NONE = 0
-SPATIAL_CORRELATION_PIXEL = 1
-SPATIAL_CORRELATION_SAMPLER = 2
-
-def str_to_int(value):
-    if isinstance(value, int):
-        return value
-
-    str_dict = {
-        "uniform": TIME_SAMPLING_UNIFORM,
-        "stratified": TIME_SAMPLING_STRATIFIED,
-        "antithetic": TIME_SAMPLING_ANTITHETIC,
-        "antithetic_mirror": TIME_SAMPLING_ANTITHETIC_MIRROR,
-        "periodic": TIME_SAMPLING_PERIODIC,
-        "regular": TIME_SAMPLING_REGULAR,
-
-        "none": SPATIAL_CORRELATION_NONE,
-        "pixel": SPATIAL_CORRELATION_PIXEL,
-        "sampler": SPATIAL_CORRELATION_SAMPLER
-    }
-    return str_dict[value]
-
 
 def render_image_multi_pass(scene, integrator, single_pass_spp, total_pass, show_progress=False):
     img_sum = None
@@ -109,7 +79,79 @@ def run_scene_radiance(scene, scene_name, **kwargs):
     np.save(numpy_output_file_name, img)
     save_hdr_image(img, output_path, "%s.png" % output_file_name)
 
-def run_scene(scene_name, light_setting, expname, total_spp, 
+def run_scene_doppler_tof(
+    scene_name="cornell-box",
+    wave_function_type="sinusoidal",
+    low_frequency_component_only=True,
+    hetero_frequency=1.0, hetero_offset=0.0,
+    time_sampling_method="antithetic",
+    antithetic_shift=None, 
+    path_correlation_depth=16,
+    exposure_time=0.0015,
+    w_g=30,
+    max_depth=4,
+    use_stratified_sampling_for_each_interval=True,
+    exit_if_file_exists=True,
+    base_dir=None,
+    expname=None,
+    scene=None,
+    scene_xml=None,
+    total_spp=1024,
+    **kwargs
+):
+    output_path = os.path.join(scene_name, wave_function_type, "freq_%.3f_offset_%.3f" % (hetero_frequency, hetero_offset))
+    output_path = os.path.join(base_dir, output_path)
+    output_file = os.path.join(output_path, "%s.npy" % expname)
+
+    # check file already exists
+    if os.path.exists(output_file) and exit_if_file_exists:
+        print("File already exists!")
+        return np.load(output_file)
+    else:
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+    
+    if antithetic_shift is None:
+        if time_sampling_method == "antithetic":
+            antithetic_shift = 0.5
+        else:
+            antithetic_shift = 0.0
+
+    if scene is None:
+        scene = mi.load_file(scene_xml)
+
+    # define integrator
+    integrator_config_dict = {
+        'type': 'dopplertofpath',
+        'is_doppler_integrator': True,
+        'max_depth': max_depth, 
+        'w_g': w_g, 
+        'time': exposure_time,
+        'hetero_frequency': hetero_frequency,
+        'hetero_offset': hetero_offset,
+        'antithetic_shift': antithetic_shift,
+        'time_sampling_method': time_sampling_method,
+        'path_correlation_depth': path_correlation_depth,
+        'low_frequency_component_only': low_frequency_component_only,
+        'wave_function_type': wave_function_type,
+        'use_stratified_sampling_for_each_interval': use_stratified_sampling_for_each_interval
+    }
+    integrator_doppler = mi.load_dict(integrator_config_dict)
+    
+    # render pass
+    single_pass_spp = min(1024, total_spp)
+    show_progress = kwargs.get("show_progress", False)
+    img_dop = render_image_multi_pass(scene, integrator_doppler, single_pass_spp, total_spp // single_pass_spp, show_progress=show_progress)
+    np.save(output_file, img_dop)
+
+    if kwargs.get("export_png", False):
+        save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % output_file)
+    
+    pass
+
+
+def run_scene_old(
+    scene_name, light_setting, expname, total_spp, 
         hetero_frequency=1.0, hetero_offset=0.0, 
         antithetic_shift=None, 
         n_time_samples=2, 
@@ -130,24 +172,14 @@ def run_scene(scene_name, light_setting, expname, total_spp,
     
     output_path = os.path.join(kwargs.get("base_dir"), scene_name, "freq_%.3f_offset_%.3f" % (hetero_frequency, hetero_offset) )
     output_file = os.path.join(output_path, "%s.npy" % output_file_name)
-    # print(output_path)
     
     if os.path.exists(output_file) and exit_if_file_exists:
         print("File already exists!")
         return np.load(output_file)
 
-
     if scene is None:
         scene = mi.load_file(os.path.join("../scenes", scene_name, "%s.xml"%light_setting))
-    # scene.integrator()
 
-    # pprint(inspect.getmembers(scene))
-    #mi.set_log_level(mi.LogLevel.Error)
-    # params = mi.traverse(scene)
-    #print(params)
-    #return
-
-    # img = mi.render(scene)
     config_dict = {
         'type': 'dopplertofpath',
         'max_depth': kwargs.get("max_depth", 4), 
@@ -160,22 +192,10 @@ def run_scene(scene_name, light_setting, expname, total_spp,
         'time_sampling_method': time_sampling_method,
         'path_correlation_depth': path_correlation_depth,
         'low_frequency_component_only': kwargs.get("low_frequency_component_only", True),
-        'wave_function_type': kwargs.get("wave_function_type", "sinusoidal")
+        'wave_function_type': kwargs.get("wave_function_type", "sinusoidal"),
+        'use_stratified_sampling_for_each_interval': kwargs.get('use_stratified_sampling_for_each_interval', True)
     }
     integrator_doppler = mi.load_dict(config_dict)
-
-
-    # sampler = mi.load_dict({
-    #     'type': 'correlated',
-    #     'antithetic_shift': antithetic_shift,
-    #     'time_correlate_number': n_time_samples,
-    #     'path_correlate_number': n_time_samples,
-    #     'use_stratified_sampling_for_antithetic': False
-    # })
-
-    # scene.sensors()[0].sampler = sampler
-
-    # single_pass_spp = 1024
 
     output_path = os.path.join(kwargs.get("base_dir"), scene_name, "freq_%.3f_offset_%.3f" % (hetero_frequency, hetero_offset) )
     if not os.path.exists(output_path):
@@ -188,18 +208,6 @@ def run_scene(scene_name, light_setting, expname, total_spp,
     np.save(os.path.join(output_path, "%s.npy" % output_file_name), img_dop)
 
     if kwargs.get("export_png", False):
-        # img_dop = np.load(os.path.join(output_path, "%s.npy" % output_file_name))
-        # visualize_tof_image(img_dop, vmin=kwargs.get("vmin", None), vmax=kwargs.get("vmax", None))
-        # plt.colorbar()
-        # plt.axis('off')
-        # plt.savefig(os.path.join(output_path, "%s.png" % output_file_name), bbox_inches='tight', pad_inches=0)
-        # plt.close('all')
-        # print("AAAAAAAAAAAAAa")
         save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % output_file_name)
     
     return np.asarray(img_dop)
-
-
-    # plt.colorbar()
-    # plt.savefig(os.path.join(output_path, "%s.png" % output_file_name))
-    # plt.close()

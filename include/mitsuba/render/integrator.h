@@ -268,6 +268,7 @@ protected:
     uint32_t m_spatial_correlation_method;
     uint32_t m_time_intervals;
     ScalarFloat m_antithetic_shift;
+    bool m_use_stratified_sampling_for_each_interval;
     uint32_t m_path_correlation_depth;
 };
 

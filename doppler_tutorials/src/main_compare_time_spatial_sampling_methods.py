@@ -45,11 +45,8 @@ def main():
     wave_function_type = args.wave_function_type
     basedir = args.basedir
 
-    basedir = '/media/juhyeon/Data1/Mitsuba3Python_final/'
-    output_scene_name = "%s/%s" % (scene_name, wave_function_type)
-
     # Load scene
-    scene = mi.load_file(os.path.join(basedir, "scenes", scene_name, "doppler_point_light_correlated_sampler.xml"))
+    scene = mi.load_file(os.path.join(basedir, "scenes", scene_name, "doppler_point_correlated_sampler.xml"))
 
     # scene configs
     scene_configs = {
@@ -92,27 +89,68 @@ def main():
 
     for f, o in itertools.product(heterodyne_frequencies, heterodyne_offsets):
         common_configs = {
-            "hetero_frequency": f,
-            "hetero_offset": o,
-            "scene": scene,
-            "low_frequency_component_only": args.low_frequency_component_only,
+            "scene_name": scene_name,
             "wave_function_type": args.wave_function_type,
+            "low_frequency_component_only": args.low_frequency_component_only,
+            "hetero_frequency": f, "hetero_offset": o,
+            "scene": scene,
             "max_depth": scene_config.get("max_depth")
         }
 
-        # GT Images
+        # Experiment 0. --> create reference image
         if args.expnumber == 0:
-            run_scene(
-                output_scene_name, "doppler_point_correlated_sampler", "reference", 
-                scene_config.get("reference_spp"),
-                n_time_samples=2,
+            run_scene_doppler_tof(
+                expname="reference", 
+                total_spp=scene_config.get("reference_spp"),
                 time_sampling_method="antithetic",
                 path_correlation_depth=16,
                 base_dir=os.path.join(basedir, "results/gt_images"),
-                exit_if_file_exists=False,
+                exit_if_file_exists=True,
                 export_png=True,
                 **common_configs
             )
-                        
+        
+        # Experiment 1. --> different methods with different correlation depths
+        elif args.expnumber == 1:
+            time_sampling_methods = ["uniform", "stratified", "antithetic", "antithetic_mirror"]
+            path_correlation_depths = [0, 1, 2, 16]   # 16 : full
+            for time_sampling_method in time_sampling_methods:
+                for path_correlation_depth in path_correlation_depths:
+                    expname = "%s_path_corr_depth_%d" % (time_sampling_method, path_correlation_depth)
+                    run_scene_doppler_tof(
+                        expname=expname, 
+                        total_spp=scene_config.get("spp"),
+                        time_sampling_method=time_sampling_method,
+                        path_correlation_depth=path_correlation_depths,
+                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison"),
+                        exit_if_file_exists=True,
+                        export_png=True,
+                        **common_configs
+                    )
+
+        # Experiment 2. --> different antithetic shifts
+        elif args.expnumber == 2:
+            time_sampling_methods = ["antithetic", "antithetic_mirror"]
+            for time_sampling_method in time_sampling_methods:
+                for antithetic_shift in antithetic_shifts:
+                    expname = "%s_shift_%.1f" % (time_sampling_method, antithetic_shift)
+                    run_scene_doppler_tof(
+                        expname=expname, 
+                        total_spp=scene_config.get("spp"),
+                        time_sampling_method=time_sampling_method,
+                        path_correlation_depth=16,
+                        base_dir=os.path.join(basedir, "results/antithetic_shift_comparison"),
+                        exit_if_file_exists=True,
+                        antithetic_shift=antithetic_shift,
+                        export_png=True,
+                        **common_configs
+                    )
+
+        # Experiment 3. --> different correlation depth
+        elif args.expnumber == 3:
+            pass
+                    
+
+
 if __name__ == "__main__":
     main()

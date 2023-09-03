@@ -74,6 +74,7 @@ MI_VARIANT SamplingIntegrator<Float, Spectrum>::SamplingIntegrator(const Propert
         default_shift = 0.5;
     }
     m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", default_shift);
+    m_use_stratified_sampling_for_each_interval = props.get<bool>("use_stratified_sampling_for_each_interval", true);
 
     m_path_correlation_depth = props.get<uint32_t>("path_correlation_depth", 0);
     // m_spatial_correlation_method = props.get<uint32_t>("spatial_correlation_method", SPATIAL_CORRELATION_NONE);
@@ -491,7 +492,7 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
 
     Float time = sensor->shutter_open();
     if (sensor->shutter_open_time() > 0.f)
-        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift) * sensor->shutter_open_time();
+        time += sampler->next_1d_time(active, m_time_sampling_method, m_antithetic_shift, m_use_stratified_sampling_for_each_interval) * sensor->shutter_open_time();
 
     Float wavelength_sample = 0.f;
     if constexpr (is_spectral_v<Spectrum>)

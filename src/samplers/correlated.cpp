@@ -18,11 +18,8 @@ public:
         m_time_correlate_number = props.get<int>("time_correlate_number", 2);
         m_path_correlate_number = props.get<int>("path_correlate_number", m_time_correlate_number);
 
-        m_use_stratified_sampling_for_each_interval = props.get<bool>("use_stratified_sampling_for_each_interval", true);
-        m_antithetic_shift = props.get<ScalarFloat>("antithetic_shift", 0.0);
-
-        std::cout << "m_time_correlate_number" << m_time_correlate_number << std::endl;
-        std::cout << "m_path_correlate_number" << m_path_correlate_number << std::endl;
+        std::cout << "time_correlate_number: " << m_time_correlate_number << std::endl;
+        std::cout << "path_correlate_number: " << m_path_correlate_number << std::endl;
     }
 
     ref<Sampler<Float, Spectrum>> fork() override {
@@ -31,8 +28,6 @@ public:
         sampler->m_base_seed = m_base_seed;
         sampler->m_time_correlate_number = m_time_correlate_number;
         sampler->m_path_correlate_number = m_path_correlate_number;
-        sampler->m_use_stratified_sampling_for_each_interval = m_use_stratified_sampling_for_each_interval;
-        sampler->m_antithetic_shift = m_antithetic_shift;
         return sampler;
     }
 
@@ -94,7 +89,7 @@ public:
         return Point2f(f1, f2);
     }
 
-    Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) override {
+    Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0, bool use_stratified_sampling_for_each_interval = false) override {
         Assert(seeded());
         // (1) Uniform sampling -> Just use m_rng
         if(strategy == TIME_SAMPLING_UNIFORM){
@@ -111,7 +106,7 @@ public:
             r = m_rng_time.template next_float<Float>(active);
         }
 
-        if(m_use_stratified_sampling_for_each_interval){
+        if(use_stratified_sampling_for_each_interval){
             int n_stratum = m_sample_count / m_time_correlate_number;
             if(strategy == ETimeSampling::TIME_SAMPLING_STRATIFIED){
                 // use permutation
@@ -189,9 +184,6 @@ protected:
     int m_time_correlate_number;
     mitsuba::PCG32<UInt32> m_rng_path;  // correlated path sampler
     int m_path_correlate_number;
-    ScalarFloat m_antithetic_shift;
-    bool m_use_stratified_sampling_for_each_interval;
-
     /// Per-sequence permutation seed
     UInt32 m_permutation_seed;
     

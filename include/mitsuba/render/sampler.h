@@ -128,7 +128,8 @@ public:
     virtual void advance();
 
     /// Retrieve the next component value from the current sample
-    virtual Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, ScalarFloat antithetic_shift = 0.0) { return next_1d(); }
+    virtual Float next_1d_time(Mask active = true, ETimeSampling strategy = ETimeSampling::TIME_SAMPLING_UNIFORM, 
+        ScalarFloat antithetic_shift = 0.0, bool use_stratified_sampling_for_each_interval = false) { return next_1d(); }
 
     /// Retrieve the next component value from the current sample
     virtual Float next_1d(Mask active = true);
