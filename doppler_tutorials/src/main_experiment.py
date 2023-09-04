@@ -13,12 +13,13 @@ import inspect
 from pprint import pprint
 
 from utils.image_utils import *
+from utils.common_configs import *
 import configargparse
 import gc
 
 
 def main():
-    N = 11
+    N = 10 + 1
     heterodyne_frequencies = np.linspace(0.0, 1.0, N)
     heterodyne_offsets = np.linspace(0.0, 1.0, N)
     antithetic_shifts = np.linspace(0.0, 1.0, N)
@@ -31,11 +32,11 @@ def main():
     parser.add_argument("--wave_function_type", type=str, default="sinusoidal", help="waveform")
     parser.add_argument("--low_frequency_component_only", type=bool, default=True, help="low frequency only")
     parser.add_argument("--part", type=int, default=0, help="divide part for faster simulation only support by 2")
-    parser.add_argument("--basedir", type=str, default="./", help="base directory")
+    parser.add_argument("--basedir", type=str, default="../", help="base directory")
 
     args = parser.parse_args()
 
-    # split configuration into two part
+    # split configuration into two part for speed up single scene
     if args.part == 1:
         heterodyne_offsets = np.linspace(0.0, 0.5, 6)
     elif args.part == 2:
@@ -49,44 +50,15 @@ def main():
     scene = mi.load_file(os.path.join(basedir, "scenes", scene_name, "doppler_point_correlated_sampler.xml"))
 
     # scene configs
-    scene_configs = {
-        "cornell-box" : {
-            "max_depth": 4,
-            "reference_spp": 4096 * 4,
-            "spp": 1024
-        },
-        "living-room-2" : {
-            "max_depth": 4,
-            "reference_spp": 4096 * 32,
-            "spp": 1024
-        },
-        "veach-ajar" : {
-            "max_depth": 8,
-            "reference_spp": 4096 * 32,
-            "spp": 1024
-        },
-        "soccer-ball" : {
-            "max_depth": 8,
-            "reference_spp": 4096 * 32,
-            "spp": 1024
-        },
-        "bedroom" : {
-            "max_depth": 8,
-            "reference_spp": 4096 * 32,
-            "spp": 1024
-        },
-        "kitchen" : {
-            "max_depth": 8,
-            "reference_spp": 4096 * 32,
-            "spp": 1024
-        }
-    }
+    scene_configs = get_scene_configs()
+
     scene_config = scene_configs.get(scene_name)
 
     frequencies, offsets = np.meshgrid(heterodyne_frequencies, heterodyne_offsets)
     frequencies = frequencies.flatten()
     offsets = offsets.flatten()
 
+    # render all configurations
     for f, o in itertools.product(heterodyne_frequencies, heterodyne_offsets):
         common_configs = {
             "scene_name": scene_name,

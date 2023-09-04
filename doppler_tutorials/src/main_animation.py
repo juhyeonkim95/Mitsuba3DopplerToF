@@ -1,9 +1,5 @@
 from program_runner import *
 
-# mi.set_log_level(mi.LogLevel.Info)
-import matplotlib as mpl
-mpl.use('Agg')
-
 import numpy as np
 from PIL import Image
 import os
@@ -14,118 +10,153 @@ import inspect
 from pprint import pprint
 
 from utils.image_utils import *
-import argparse
+import configargparse
 import gc
 from utils.common_configs import *
 
 
 def main():
-    heterodyne_frequencies = [1.0]
-    heterodyne_offsets = [0.0]
-    
-    argParser = argparse.ArgumentParser()
-    argParser.add_argument("-n", "--scene_name", help="your name")
-    argParser.add_argument("-p", "--part", type=int, default=0, help="part")
-    # argParser.add_argument("-fp", "--fpart", type=int, default=0, help="fpart")
-    argParser.add_argument("-e", "--expnumber", type=int, default=0, help="expnumber")
+    parser = configargparse.ArgumentParser()
+    parser.add_argument('--config', is_config_file=True, help='config file path')
+    parser.add_argument("--scene_name", help="your name")
+    parser.add_argument("--part", type=int, default=0, help="part")
+    parser.add_argument("--wave_function_type", type=str, default="sinusoidal", help="waveform")
+    parser.add_argument("--basedir", type=str, default="./", help="base directory")
 
-    args = argParser.parse_args()
+    args = parser.parse_args()
     scene_name = args.scene_name
+    wave_function_type = args.wave_function_type
 
-    
-    wave_target_configs = {
-        "sinusoidal_low_freq_only" : {
-            "low_frequency_component_only": True
-        }
-    }
+    # (time_sampling, correlation_depth)
+    methods = [
+        ("uniform", 0),
+        ("stratified", 16),
+        ("antithetic", 16)
+    ]
 
+    # get scene_config
     scene_configs = get_animation_scene_configs()
-
     if not scene_name in scene_configs:
         return
-    
     scene_config = scene_configs[scene_name]
 
-    animation_length = (scene_config["animation_length"] - 1) * scene_config["intervals"]
+
+    end = scene_config.get("animation_end_frame", scene_config["animation_length"]) - 1
+    start = scene_config.get("animation_start_frame", 0)
+    animation_length = (end - start) * scene_config["intervals"]
+    
     start = 0
     end = animation_length
+
+    # split configuration into two part for speed up single scene
     if args.part == 1:
-        end = animation_length // 2
+        end = animation_length // 2 + 1
     elif args.part == 2:
-        start = animation_length // 2
+        start = animation_length // 2 + 1
 
-    base_dir = "../scenes_animation"
-
-    for frame_number in trange(start, end, 1):
-        scene = mi.load_file(os.path.join(base_dir, scene_name, "animation_%d.xml" % frame_number))
-        scene_no_animation = mi.load_file(os.path.join(base_dir, scene_name, "no_animation_%d.xml" % frame_number))
+    scene_base_dir = os.path.join(args.basedir, "scenes_animation")
+    hetero_offsets = (0.0, 0.25)  # phase offset of 0 and 90 degree
     
-        for wave_name, wave_config in wave_target_configs.items():
-            output_scene_name = "%s/%s" % (scene_name, wave_name)
-            exit_if_file_exists = False
+    # render all frames
+    for frame_number in trange(start, end, 1):
+        scene = mi.load_file(os.path.join(scene_base_dir, scene_name, "animation_%d.xml" % frame_number))
+        scene_no_animation = mi.load_file(os.path.join(scene_base_dir, scene_name, "no_animation_%d.xml" % frame_number))
+        
+        output_file_name = "frame_%d" % (frame_number)
+        exit_if_file_exists = True
+        
+        output_base_dir =  os.path.join(args.basedir, "results_animation")
+        
+        # Render GT radial velocity
+        run_scene_velocity(
+            scene, 
+            scene_name,
+            base_dir=output_base_dir,
+            output_file_name="frame_%d" % frame_number,
+            exit_if_file_exists=exit_if_file_exists,
+            **scene_config
+        )
 
-            #if args.part == 2:
-            run_scene_velocity(
-                scene, 
-                scene_name,
-                base_dir="../results_animation/linear_interpolate",
-                output_file_name="frame_%d" % frame_number,
-                exit_if_file_exists=exit_if_file_exists,
-                **kwargs
-            )
-            # else:
-            #     pass
-            run_scene_radiance(
-                scene_no_animation, 
-                scene_name,
-                base_dir="../results_animation/linear_interpolate",
-                output_file_name="frame_%d" % frame_number,
-                exit_if_file_exists=exit_if_file_exists
-            )
-            # continue
+        # Render scene radiance (standard rendering)
+        run_scene_radiance(
+            scene_no_animation, 
+            scene_name,
+            base_dir=output_base_dir,
+            output_file_name="frame_%d" % frame_number,
+            exit_if_file_exists=exit_if_file_exists
+        )
+        
+        exposure_time = scene_config.get("exposure_time", 0.0015)
+        common_configs = {
+            "scene_name": scene_name,
+            "wave_function_type": args.wave_function_type,
+            "low_frequency_component_only": True,
+            "scene": scene,
+            "w_g": scene_config.get("w_g"),
+            "exposure_time": exposure_time,
+            "max_depth": scene_config.get("max_depth"),
+            "exit_if_file_exists": exit_if_file_exists
+        }
 
-            for f in heterodyne_frequencies:
-                for o in heterodyne_offsets:
-                    total_spp = scene_config.get("reference_spp")
-                    # print(f, o, "freq, offset")
-                    common_configs = {
-                        "hetero_frequency": f,
-                        "hetero_offset": o,
-                        "scene": scene,
-                        "w_g": scene_config.get("w_g"),
-                        "wave_config": wave_config,
-                        "max_depth": scene_config.get("max_depth"),
-                        "exit_if_file_exists": exit_if_file_exists
-                    }
-                    vrange = 1e-3
-                    if f > 0.5:
-                        vrange *= 1e-3
-                    # GT Images
-                    run_scene(
-                        output_scene_name, "doppler_point_correlated_sampler", "reference", 
-                        total_spp,
-                        n_time_samples=2,
-                        time_sampling_method="antithetic",
-                        path_correlation_depth=16,
-                        base_dir="../results_animation/linear_interpolate",
-                        output_file_name = "frame_%d" % frame_number,
-                        export_png=True,
-                        vmin=-vrange,
-                        vmax=vrange,
-                        exposure_time=scene_config.get("exposure_time", 0.0015)
-                        **common_configs
-                    )
-            # GT Images
-            # run_scene(
-            #     output_scene_name, "doppler_point_correlated_sampler", "reference", 
-            #     scene_config.get("reference_spp"),
-            #     n_time_samples=2,
-            #     time_sampling_method="antithetic",
-            #     path_correlation_depth=16,
-            #     base_dir="../results_animation/linear_interpolate",
-            #     exit_if_file_exists=True,
-            #     **common_configs
-            # )
+        # (1) Render homodyne (no variation is used for homodyne)
+        homodyne_images = []
+        for hetero_offset in hetero_offsets:
+            output_file_name = "frame_%d" % (frame_number)
+            
+            vrange = 1e-3
+            homodyne_image = run_scene_doppler_tof(
+                time_sampling_method="antithetic",
+                path_correlation_depth=16,
+                base_dir=output_base_dir,
+                expname=output_file_name,
+                export_png=True,
+                hetero_offset=hetero_offset,
+                hetero_frequency=0.0,
+                vmin=-vrange,
+                vmax=vrange,
+                **common_configs
+            )
+            homodyne_image = to_tof_image(homodyne_image, exposure_time=exposure_time)
+            homodyne_images.append(homodyne_image)
+
+        # (2) Render heterodyne with variations
+        for m in methods:
+            heterodyne_images = []
+            for i, hetero_offset in enumerate(hetero_offsets):
+                time_sampling_method, path_correlation_depth = m
+                output_file_name = "frame_%d" % (frame_number)
+                output_path = "%s/%s/%s_path_corr_depth_%d" % (scene_name, args.wave_function_type, time_sampling_method, path_correlation_depth) 
+                total_spp = scene_config.get("total_spp")
+                
+                vrange = 1e-3
+                vrange *= 1e-3
+                heterodyne_image = run_scene_doppler_tof(
+                    time_sampling_method=time_sampling_method,
+                    path_correlation_depth=path_correlation_depth,
+                    base_dir=output_base_dir,
+                    expname=output_file_name,
+                    export_png=True,
+                    hetero_offset=hetero_offset,
+                    hetero_frequency=1.0,
+                    vmin=-vrange,
+                    vmax=vrange,
+                    total_spp=total_spp,
+                    output_path=output_path,
+                    **common_configs
+                )
+                
+                heterodyne_image = to_tof_image(heterodyne_image, exposure_time=exposure_time)
+                heterodyne_images.append(heterodyne_image)
+
+                # calculate velocity using single phase
+                velocity_map = calc_velocity_from_homo_hetero(homodyne_images[i], heterodyne_image, **scene_config)
+                save_speed_image(velocity_map, os.path.join(output_base_dir, output_path, "velocity_%.3f" % hetero_offset), "frame_%d.png" % frame_number, **scene_config)
+            
+            # calculate velocity using multiple phases
+            velocity_map = calc_velocity_from_homo_heteros(homodyne_images, heterodyne_images, **scene_config)
+            save_speed_image(velocity_map, os.path.join(output_base_dir, output_path, "velocity"), "frame_%d.png" % frame_number, **scene_config)
+            
+                
                         
 if __name__ == "__main__":
     main()

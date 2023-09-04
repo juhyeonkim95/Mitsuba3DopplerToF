@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 15})
 from skimage.transform import rescale, resize, downscale_local_mean
 from scipy.interpolate import make_interp_spline, BSpline
+import configargparse
 
 target_name_dict = {
     "freq" : "$\omega$",
@@ -299,6 +300,99 @@ def plot_experiment1(
 
 def plot_experiment2(
     scene_name="cornell-box",
+    base_dir=None,
+    reference_base_dir=None,
+    output_base_dir=None,
+    **kwargs
+):
+    time_sampling_methods = ["uniform", "stratified", "antithetic" ,"antithetic_mirror"]
+    path_correlation_depths = [16]
+    wave_function_types=["sinusoidal", "rectangular", "triangular", "trapezoidal"]
+
+    color_dict = {
+        "uniform": "k",
+        "stratified": "r",
+        "antithetic": "g",
+        "antithetic_mirror": "b"
+    }
+    mark_dict = {
+        0: "-",
+        1: "--",
+        2: "-.",
+        3: ":",
+        16:"-"
+    }
+    
+    expnames = []
+    display_names = []
+    
+    line_styles = {}
+    alphas = {}
+    
+    for t in time_sampling_methods:
+        for s in path_correlation_depths:
+            expname = "%s_path_corr_depth_%d" % (t, s)
+            expnames.append(expname)
+            line_styles[expname]= "%s-" % (color_dict[t])
+            alphas[expname] = 1.0
+            display_name = t.replace("_", " ")
+            display_names.append(display_name)
+            if t != "uniform":
+                expname = "%s_path_corr_depth_%d_no_further_stratification" % (t, s)
+                expnames.append(expname)
+                line_styles[expname]= "%s-." % (color_dict[t])
+                alphas[expname] = 0.5
+                display_name = t.replace("_", " ")
+                display_names.append(display_name)
+
+    total_scene_names = []
+
+    for wave_function_type in wave_function_types:
+        total_scene_names.append("%s/%s" % (scene_name, wave_function_type))
+
+    error_type = "RMSE"
+
+    fig, axis = plt.subplots(2, 2, figsize=(6 * 2, 6 * 2))
+    
+    if output_base_dir is None:
+        output_base_dir = base_dir + "_plot"
+
+    for i, scene_name in enumerate(total_scene_names):
+        if not os.path.exists(os.path.join(output_base_dir, scene_name)):
+            os.makedirs(os.path.join(output_base_dir, scene_name))
+        
+        export_error(
+            base_dir=base_dir,
+            reference_base_dir=reference_base_dir,
+            output_base_dir=output_base_dir,
+            scene_name=scene_name,
+            expnames=expnames,
+            **kwargs
+        )
+
+        ax = axis[i % 2][i // 2]
+        plot_2d_freq_vs_error_by_expname_subplot(
+            target="freq",
+            base_dir=base_dir,
+            output_base_dir=output_base_dir,
+            scene_name=scene_name,
+            expnames=expnames,
+            error_type=error_type,
+            line_styles=line_styles,
+            alphas = alphas,
+            display_names=display_names,
+            plot_std=True,
+            ax=ax
+        )
+            
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_base_dir, "plot_total.svg"), dpi=600)
+    plt.savefig(os.path.join(output_base_dir, "plot_total.png"), dpi=600)
+    plt.show()
+
+def plot_experiment3(
+    scene_name="cornell-box",
     time_sampling_method = "antithetic",
     wave_function_type = "sinusoidal",
     base_dir=None,
@@ -362,32 +456,52 @@ def plot_experiment2(
 
 
 if __name__ == "__main__":
-    project_dir = "/media/juhyeon/Data1/Mitsuba3Python_final/"
+    parser = configargparse.ArgumentParser()
+    parser.add_argument('--config', is_config_file=True, help='config file path')
+    parser.add_argument("--expnumber", type=int, default=1, help="expnumber")
+    parser.add_argument("--basedir", type=str, default="../", help="base directory")
+
+    args = parser.parse_args()
+    project_dir = args.basedir
     
-    # Experiment 1
-    # reference_base_dir = os.path.join(project_dir, "results/gt_images")
-    # base_dir = os.path.join(project_dir, "results/time_spatial_sampling_comparison")
-    # scene_names = ["cornell-box", "living-room-2", "bedroom", "kitchen", "soccer-ball", "veach-ajar"]
-    # plot_experiment1(
-    #     scene_names = scene_names,
-    #     reference_base_dir=reference_base_dir,
-    #     base_dir = base_dir
-    # )
+    # Experiment 1. --> different methods with different correlation depths
+    if args.expnumber == 1:
+        reference_base_dir = os.path.join(project_dir, "results/gt_images")
+        base_dir = os.path.join(project_dir, "results/time_spatial_sampling_comparison")
+        scene_names = ["cornell-box", "bedroom", "kitchen", "living-room-2", "soccer-ball", "veach-ajar"]
+        plot_experiment1(
+            scene_names = scene_names,
+            reference_base_dir=reference_base_dir,
+            base_dir = base_dir
+        )
+    
+    # Experiment 2. --> different methods with different correlation depths WITHOUT further stratification
+    elif args.expnumber == 2:
+        reference_base_dir = os.path.join(project_dir, "results/gt_images")
+        base_dir = os.path.join(project_dir, "results/time_spatial_sampling_comparison")
+        output_base_dir = os.path.join(project_dir, "results/furtherstratificaion_comparison_plot")
+        plot_experiment2(
+            scene_name = "cornell-box",
+            reference_base_dir=reference_base_dir,
+            base_dir = base_dir,
+            output_base_dir=output_base_dir
+        )
 
-    # Experiment 2
-    # reference_base_dir = os.path.join(project_dir, "results/gt_images")
-    # base_dir = os.path.join(project_dir, "results/antithetic_shift_comparison")
+    # Experiment 3. --> different antithetic shifts
+    elif args.expnumber == 3:
+        reference_base_dir = os.path.join(project_dir, "results/gt_images")
+        base_dir = os.path.join(project_dir, "results/antithetic_shift_comparison")
 
-    # plot_experiment2(
-    #     scene_name = "cornell-box",
-    #     time_sampling_method = "antithetic",
-    #     reference_base_dir=reference_base_dir,
-    #     base_dir = base_dir
-    # )
+        plot_experiment3(
+            scene_name = "cornell-box",
+            time_sampling_method = "antithetic",
+            reference_base_dir=reference_base_dir,
+            base_dir = base_dir
+        )
 
-    # plot_experiment2(
-    #     scene_name = "cornell-box",
-    #     time_sampling_method = "antithetic_mirror",
-    #     reference_base_dir=reference_base_dir,
-    #     base_dir = base_dir
-    # )
+        plot_experiment3(
+            scene_name = "cornell-box",
+            time_sampling_method = "antithetic_mirror",
+            reference_base_dir=reference_base_dir,
+            base_dir = base_dir
+        )

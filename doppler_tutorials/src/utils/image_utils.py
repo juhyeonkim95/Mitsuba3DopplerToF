@@ -69,19 +69,6 @@ def save_radiance_image(image, output_path, filename, resize=1):
     plt.close('all')
 
 
-# def save_speed_image(image, output_path, filename, colorbar_also=False):
-#     if not os.path.exists(output_path):
-#         os.makedirs(output_path)
-#     fig = plt.figure()
-#     plt.axis('off')
-#     plt.imshow(image, vmin=-4, vmax=4, cmap=plt.cm.RdBu)
-#     fig.savefig(os.path.join(output_path, filename), bbox_inches='tight', pad_inches=0)
-   
-#     if colorbar_also:
-#         plt.colorbar()
-#         fig.savefig(os.path.join(output_path, "colorbar_"+filename), bbox_inches='tight')
-#     plt.close('all')
-
 def save_hdr_image(image, output_path, filename, colorbar_also=False, resize=1, 
     **kwargs):
     image = np.asarray(image)

@@ -97,10 +97,13 @@ def run_scene_doppler_tof(
     scene=None,
     scene_xml=None,
     total_spp=1024,
+    output_path=None,
     **kwargs
 ):
-    output_path = os.path.join(scene_name, wave_function_type, "freq_%.3f_offset_%.3f" % (hetero_frequency, hetero_offset))
-    output_path = os.path.join(base_dir, output_path)
+    if output_path is None:
+        output_path = os.path.join(scene_name, wave_function_type)
+
+    output_path = os.path.join(base_dir, output_path, "freq_%.3f_offset_%.3f" % (hetero_frequency, hetero_offset))
     output_file = os.path.join(output_path, "%s.npy" % expname)
 
     # check file already exists
@@ -145,9 +148,9 @@ def run_scene_doppler_tof(
     np.save(output_file, img_dop)
 
     if kwargs.get("export_png", False):
-        save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % output_file)
+        save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % expname)
     
-    pass
+    return img_dop
 
 
 def run_scene_old(
