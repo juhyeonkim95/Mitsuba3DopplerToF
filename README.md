@@ -9,6 +9,7 @@ Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeon
 ## Install
 To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
 Our implementation only works on CUDA, so make sure to include CUDA as a backend in `mistuba.conf`.
+We recommend to include `cuda_rgb` configuration.
 
 ## Parameter Explanation
 New integrator named `dopplertofpath` is added for Doppler ToF rendering.
@@ -73,9 +74,11 @@ For scene formatting, we tried to be similar with Mitsuba0.5 version.
 
 ## Usage
 ```
-mitsuba -L error config_example/example.xml
+cd configs_example
+mitsuba scene.xml -m cuda_rgb
 ```
-We also included exhaustive example configurations with result image.
+We also included exhaustive examples in `doppler_tutorials` folder.
+You can simulate various experiments in the main paper.
 
 ## Citation
 If you find this useful for your research, please consider to cite:
