@@ -2,9 +2,10 @@ Mitsuba3 Doppler Time-of-Flight Renderer
 ===================================
 ## About
 ![visualization](assets/teaser.gif)
-
-This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
-Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/MitsubaDopplerToF).
+This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" (SIGGRAPH Asia 2023, journal paper).
+Please also check Mitsuba0.5 implementation at [here](https://anonymous.4open.science/r/MitsubaDopplerToF-D78C/README.md).
+<!-- This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
+Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/MitsubaDopplerToF). -->
 
 ## Install
 To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
@@ -16,7 +17,8 @@ New integrator named `dopplertofpath` is added for Doppler ToF rendering.
 Followings are explanation for each parameter.
 
 ### ToF Related
-* `time` : Exposure time in sec. (default : 0.0015)
+* `time` : Exposure time in sec. (default : 0.0015) 
+    * Because of precision problem the output image is not multiplied with `time`. You should multiply `time` to get a correct result.
 * `w_g` : Illumination modulation frequency in MHz. (default : 30)
 * `g_1` : Illumination modulation scale. (default : 0.5)
 * `g_0` : Illumination modulation offset. (default : 0.5)
