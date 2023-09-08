@@ -85,7 +85,7 @@ def main():
         # Experiment 1. --> different methods with different correlation depths
         elif args.expnumber == 1:
             time_sampling_methods = ["uniform", "stratified", "antithetic", "antithetic_mirror"]
-            path_correlation_depths = [16]   # 16 : full
+            path_correlation_depths = [0, 16]   # 16 : full
             for time_sampling_method in time_sampling_methods:
                 for path_correlation_depth in path_correlation_depths:
                     expname = "%s_path_corr_depth_%d" % (time_sampling_method, path_correlation_depth)
@@ -103,7 +103,7 @@ def main():
         # Experiment 2. --> different methods with different correlation depths WITHOUT further stratification
         elif args.expnumber == 2:
             time_sampling_methods = ["stratified", "antithetic", "antithetic_mirror"]
-            path_correlation_depths = [16]   # 16 : full
+            path_correlation_depths = [0, 16]   # 16 : full
             for time_sampling_method in time_sampling_methods:
                 for path_correlation_depth in path_correlation_depths:
                     expname = "%s_path_corr_depth_%d_no_further_stratification" % (time_sampling_method, path_correlation_depth)
