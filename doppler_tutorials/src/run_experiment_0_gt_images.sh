@@ -1,4 +1,4 @@
-basedir=/media/juhyeon/Data1/Mitsuba3Python_final/
+basedir=../
 python main_experiment.py --scene_name cornell-box --wave_function_type sinusoidal --basedir $basedir --expnumber 0
 python main_experiment.py --scene_name cornell-box --wave_function_type rectangular --basedir $basedir --expnumber 0
 python main_experiment.py --scene_name cornell-box --wave_function_type triangular --basedir $basedir --expnumber 0

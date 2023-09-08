@@ -25,6 +25,10 @@ def export_error(**kwargs):
     N_heterodyne_frequencies = kwargs.get('N_heterodyne_frequencies', 10)
     N_heterodyne_offsets = kwargs.get('N_heterodyne_offsets', 10)
     exposure_time = kwargs.get('exposure_time', 0.0015)
+    output_base_dir = os.path.join(kwargs.get('output_base_dir'), kwargs.get('scene_name'))
+    
+    if os.path.exists(os.path.join(output_base_dir, "result.csv")) and kwargs.get("exit_if_file_exists", False):
+        return
 
     heterodyne_frequencies = np.linspace(0.0, 1.0, N_heterodyne_frequencies + 1)
     heterodyne_offsets = np.linspace(0.0, 1.0, N_heterodyne_offsets + 1)
@@ -141,8 +145,13 @@ def plot_2d_freq_vs_error_by_expname_subplot(target="freq", other_value="mean", 
     else:
         ax.ticklabel_format(style='sci', scilimits=(-3,4), axis='y')
     
-    ax.set_xlabel(None)
-    ax.set_ylabel(None)
+    if kwargs.get("hide_labels", False):
+        ax.set_xlabel(None)
+        ax.set_ylabel(None)
+    else:
+        ax.set_xlabel("$\omega_r$")
+        ax.set_ylabel(error_type)
+        ax.set_title(kwargs.get('scene_name'))
 
 def plot_3d_freq_vs_a_vs_error_by_expname(target="freq", other_value='mean', error_type='MAE', **kwargs):
     output_base_dir = os.path.join(kwargs.get('output_base_dir'), kwargs.get('scene_name'))
@@ -201,6 +210,102 @@ def plot_3d_freq_vs_a_vs_error_by_expname(target="freq", other_value='mean', err
     plt.colorbar()
     plt.savefig(os.path.join(output_dir, "plot_2d_freq_vs_a_%s_%s.png" % (error_type, kwargs.get("output_file_name", ""))), bbox_inches='tight')
     
+def plot_experiment4(
+    scene_names=["cornell-box"],
+    wave_function_type="sinusoidal",
+    base_dir=None,
+    reference_base_dir=None,
+    output_base_dir=None,
+    **kwargs
+):
+    time_sampling_methods = ["uniform", "stratified", "antithetic" ,"antithetic_mirror"]
+    path_correlation_depths = [0, 1, 2, 16]
+
+    color_dict = {
+        "uniform": "k",
+        "stratified": "r",
+        "antithetic": "g",
+        "antithetic_mirror": "b"
+    }
+    mark_dict = {
+        0: "-",
+        1: "--",
+        2: "-.",
+        3: ":",
+        16:"-"
+    }
+    
+    expnames = []
+    display_names = []
+    
+    line_styles = {}
+    alphas = {}
+    
+    for t in time_sampling_methods:
+        for s in path_correlation_depths:
+            expname = "%s_path_corr_depth_%d" % (t, s)
+            expnames.append(expname)
+            line_styles[expname]= "%s%s" % (color_dict[t],mark_dict[s])
+            alphas[expname] = 1.0
+            display_name = t.replace("_", " ")
+            display_names.append(display_name)
+
+    total_scene_names = []
+
+    for s in scene_names:
+        total_scene_names.append("%s/%s" % (s, wave_function_type))
+
+    # ["MAE", "RMSE", "PSNR", "RelativeMAE", "RelativeRMSE", "SNR"]
+    target_errors = ["RMSE", "PSNR"]
+
+    n_columns = len(scene_names)
+    n_rows = len(target_errors)
+
+    fig, axis = plt.subplots(n_rows, n_columns, figsize=(6 * n_columns, 6 * n_rows))
+    
+    if output_base_dir is None:
+        output_base_dir = base_dir + "_plot"
+
+    for i, scene_name in enumerate(total_scene_names):
+        if not os.path.exists(os.path.join(output_base_dir, scene_name)):
+            os.makedirs(os.path.join(output_base_dir, scene_name))
+        
+        export_error(
+            base_dir=base_dir,
+            reference_base_dir=reference_base_dir,
+            output_base_dir=output_base_dir,
+            scene_name=scene_name,
+            expnames=expnames,
+            **kwargs
+        )
+
+        for j, error_type in enumerate(target_errors):
+            if len(axis.shape) == 2:
+                ax = axis[j][i]
+            elif n_columns == 1:
+                ax = axis[j]
+            else:
+                ax = axis[i]
+
+            plot_2d_freq_vs_error_by_expname_subplot(
+                target="freq",
+                base_dir=base_dir,
+                output_base_dir=output_base_dir,
+                scene_name=scene_name,
+                expnames=expnames,
+                error_type=error_type,
+                line_styles=line_styles,
+                alphas = alphas,
+                display_names=display_names,
+                plot_std=True,
+                ax=ax
+            )
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_base_dir, "plot_total.svg"), dpi=600)
+    plt.savefig(os.path.join(output_base_dir, "plot_total.png"), dpi=600)
+    plt.show()
+
 
 def plot_experiment1(
     scene_names=["cornell-box"],
@@ -253,7 +358,7 @@ def plot_experiment1(
     n_columns = len(scene_names)
     n_rows = len(target_errors)
 
-    fig, axis = plt.subplots(n_rows, n_columns, figsize=(6 * n_columns, 6 * n_rows))
+    fig, axis = plt.subplots(n_rows, n_columns, figsize=(5 * n_columns, 4 * n_rows))
     
     if output_base_dir is None:
         output_base_dir = base_dir + "_plot"
@@ -472,9 +577,24 @@ if __name__ == "__main__":
         plot_experiment1(
             scene_names = scene_names,
             reference_base_dir=reference_base_dir,
-            base_dir = base_dir
+            base_dir = base_dir,
+            exit_if_file_exists=True,
         )
-    
+
+    # Experiment 4. --> different methods with different correlation depths
+    if args.expnumber == 4:
+        reference_base_dir = os.path.join(project_dir, "results/gt_images")
+        base_dir = os.path.join(project_dir, "results/time_spatial_sampling_comparison")
+        output_base_dir = os.path.join(project_dir, "results/time_spatial_sampling_comparison_full_plot")
+        scene_names = ["cornell-box"]
+        plot_experiment4(
+            scene_names = scene_names,
+            reference_base_dir=reference_base_dir,
+            output_base_dir=output_base_dir,
+            base_dir = base_dir,
+            exit_if_file_exists=True,
+        )
+
     # Experiment 2. --> different methods with different correlation depths WITHOUT further stratification
     elif args.expnumber == 2:
         reference_base_dir = os.path.join(project_dir, "results/gt_images")
