@@ -135,7 +135,7 @@ template <typename Float, typename Spectrum>
 class HDRFilm final : public Film<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(Film, m_size, m_crop_size, m_crop_offset, m_sample_border,
-                   m_filter, m_flags)
+                   m_filter, m_flags, m_tBin)
     MI_IMPORT_TYPES(ImageBlock)
 
     HDRFilm(const Properties &props) : Base(props) {
@@ -181,6 +181,9 @@ public:
         } else if (pixel_format == "xyza") {
             m_pixel_format = Bitmap::PixelFormat::XYZA;
             m_flags = +FilmFlags::Alpha;
+        } else if (pixel_format == "transient"){
+            m_pixel_format = Bitmap::PixelFormat::RGB;
+            m_flags = +FilmFlags::Empty | +FilmFlags::Transient;
         } else {
             Throw("The \"pixel_format\" parameter must either be equal to "
                   "\"luminance\", \"luminance_alpha\", \"rgb\", \"rgba\", "
@@ -231,6 +234,7 @@ public:
 
     size_t prepare(const std::vector<std::string> &aovs) override {
         bool alpha = has_flag(m_flags, FilmFlags::Alpha);
+        bool transient = has_flag(m_flags, FilmFlags::Transient);
         size_t base_channels = alpha ? 5 : 4;
 
         std::vector<std::string> channels(base_channels + aovs.size());
@@ -243,6 +247,21 @@ public:
 
         for (size_t i = 0; i < aovs.size(); ++i)
             channels[base_channels + i] = aovs[i];
+        
+        if(transient){
+            std::vector<std::string> channels_transient; //(3 * m_tBin);
+            channels_transient.push_back("R");
+            channels_transient.push_back("G");
+            channels_transient.push_back("B");
+            channels_transient.push_back("W");
+            
+            for(size_t i=0; i<m_tBin; ++i){
+                channels_transient.push_back(std::string("R"+std::to_string(i)));
+                channels_transient.push_back(std::string("G"+std::to_string(i)));
+                channels_transient.push_back(std::string("B"+std::to_string(i)));
+            }
+            channels = channels_transient;
+        }
 
         /* locked */ {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -421,7 +440,7 @@ public:
         ref<Bitmap> source = new Bitmap(
             source_fmt, struct_type_v<ScalarFloat>, m_storage->size(),
             m_storage->channel_count(), m_channels, (uint8_t *) storage.data());
-
+        
         if (raw)
             return source;
 
