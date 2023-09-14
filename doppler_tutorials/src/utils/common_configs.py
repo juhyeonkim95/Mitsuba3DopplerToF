@@ -33,7 +33,7 @@ def get_scene_configs():
     scene_configs = {
         "cornell-box" : {
             "max_depth": 4,
-            "reference_spp": 4096 * 4,
+            "reference_spp": 4096 * 32,
             "spp": 1024
         },
         "living-room-2" : {

@@ -24,6 +24,10 @@ def main():
     heterodyne_offsets = np.linspace(0.0, 1.0, N)
     antithetic_shifts = np.linspace(0.0, 1.0, N)
     n_time_samples_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    heterodyne_frequencies = np.linspace(0.0, 1.0, N)
+
+    heterodyne_frequencies = [1.0]
+    heterodyne_offsets = [0.0]
     
     parser = configargparse.ArgumentParser()
     parser.add_argument('--config', is_config_file=True, help='config file path')
@@ -77,7 +81,7 @@ def main():
                 time_sampling_method="antithetic",
                 path_correlation_depth=16,
                 base_dir=os.path.join(basedir, "results/gt_images"),
-                exit_if_file_exists=True,
+                exit_if_file_exists=False,
                 export_png=True,
                 **common_configs
             )
@@ -85,7 +89,7 @@ def main():
         # Experiment 1. --> different methods with different correlation depths
         elif args.expnumber == 1:
             time_sampling_methods = ["uniform", "stratified", "antithetic", "antithetic_mirror"]
-            path_correlation_depths = [0, 16]   # 16 : full
+            path_correlation_depths = [0, 1, 2, 16]   # 16 : full
             for time_sampling_method in time_sampling_methods:
                 for path_correlation_depth in path_correlation_depths:
                     expname = "%s_path_corr_depth_%d" % (time_sampling_method, path_correlation_depth)
@@ -103,7 +107,7 @@ def main():
         # Experiment 2. --> different methods with different correlation depths WITHOUT further stratification
         elif args.expnumber == 2:
             time_sampling_methods = ["stratified", "antithetic", "antithetic_mirror"]
-            path_correlation_depths = [0, 16]   # 16 : full
+            path_correlation_depths = [0, 1, 2, 16]   # 16 : full
             for time_sampling_method in time_sampling_methods:
                 for path_correlation_depth in path_correlation_depths:
                     expname = "%s_path_corr_depth_%d_no_further_stratification" % (time_sampling_method, path_correlation_depth)
