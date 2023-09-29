@@ -154,7 +154,7 @@ public:
            lead to undefined behavior. */
         dr::Loop<Bool> loop("Path Tracer", sampler, ray, throughput, result,
                             eta, depth, valid_ray, prev_si, prev_bsdf_pdf,
-                            prev_bsdf_delta, active);
+                            prev_bsdf_delta, active, path_length);
 
         /* Inform the loop about the maximum number of loop iterations.
            This accelerates wavefront-style rendering by avoiding costly
@@ -362,5 +362,5 @@ private:
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(TransientPathIntegrator, MonteCarloIntegrator)
-MI_EXPORT_PLUGIN(TransientPathIntegrator, "Path Tracer integrator");
+MI_EXPORT_PLUGIN(TransientPathIntegrator, "Transient Path Tracer integrator");
 NAMESPACE_END(mitsuba)

@@ -32,3 +32,6 @@ __pycache__
 /src/render/trash
 /src/trash
 /doppler_tutorials/trash
+/trash
+/src/integrators/fmcw.cpp
+/src/integrators/transient.cpp
