@@ -24,6 +24,9 @@ MI_VARIANT Film<Float, Spectrum>::Film(const Properties &props) : Object() {
         props.get<uint32_t>("crop_offset_y", 0)
     );
 
+    // for transient input
+    m_tBin = props.get<uint32_t>("tBin", 10);
+
     set_crop_window(crop_offset, crop_size);
 
     /* If set to true, regions slightly outside of the film plane will also be

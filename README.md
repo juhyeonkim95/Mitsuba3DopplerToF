@@ -2,10 +2,10 @@ Mitsuba3 Doppler Time-of-Flight Renderer
 ===================================
 ## About
 ![visualization](assets/teaser.gif)
-This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" (SIGGRAPH Asia 2023, journal paper).
-Please also check Mitsuba0.5 implementation at [here](https://anonymous.4open.science/r/MitsubaDopplerToF-EAC7/README.md).
-<!-- This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
-Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/MitsubaDopplerToF). -->
+<!-- This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" (SIGGRAPH Asia 2023, journal paper).
+Please also check Mitsuba0.5 implementation at [here](https://anonymous.4open.science/r/MitsubaDopplerToF-EAC7/README.md). -->
+This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" by Juhyeon Kim, Wojciech Jarosz, Ioannis Gkioulekas, Adithya Pediredla (SIGGRAPH Asia 2023, journal paper).
+Please also check Mitsuba0.5 implementation at [here](https://github.com/juhyeonkim95/MitsubaDopplerToF).
 
 ## Install
 To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
@@ -49,7 +49,7 @@ Followings are explanation for each parameter.
 
 * `antithetic_shift` : User defined antithetic shift. (default : 0.5 for `antithetic`, 0.0 for `antithetic_mirror`)
 
-Unlike Mitsuba0.5, we only support sampler-level correlation.
+Unlike Mitsuba0.5, we only support sampler-level correlation (temporal random replay).
 This exploits the advantage of parallelization at the most.
 In other words, we do not explicitly correlate ray-by-ray fashion. (e.g `ray_position` or `ray_sampler` in Mitsuba0.5 version)
 We are planning to add this implementation in future.

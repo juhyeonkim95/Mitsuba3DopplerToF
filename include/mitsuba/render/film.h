@@ -34,6 +34,9 @@ enum class FilmFlags : uint32_t {
      * a special treatment of the samples before storing them in the Image Block.
      */
     Special              = 0x4,
+
+    /// The film stores a transient representation of the image
+    Transient             = 0x8,
 };
 
 MI_DECLARE_ENUM_OPERATORS(FilmFlags)
@@ -218,6 +221,7 @@ protected:
     bool m_sample_border;
     ref<ReconstructionFilter> m_filter;
     ref<Texture> m_srf;
+    uint32_t m_tBin;
 };
 
 MI_EXTERN_CLASS(Film)
