@@ -1,6 +1,6 @@
 Mitsuba3 Doppler Time-of-Flight Renderer
 ===================================
-<font size="10"> [Paper](https://arxiv.org/abs/2309.16163) / [Project](https://juhyeonkim95.github.io/project-pages/dopplertof) </font>
+<font size="15"> [Paper](https://arxiv.org/abs/2309.16163) / [Project](https://juhyeonkim95.github.io/project-pages/dopplertof) </font>
 ## About
 ![visualization](assets/teaser.gif)
 <!-- This repository is the official Mitsuba3 implementation of "Doppler Time-of-Flight Rendering" (SIGGRAPH Asia 2023, journal paper).
