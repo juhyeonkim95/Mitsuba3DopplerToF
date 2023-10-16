@@ -95,7 +95,7 @@ def main():
                         total_spp=scene_config.get("spp"),
                         time_sampling_method=time_sampling_method,
                         path_correlation_depth=path_correlation_depth,
-                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison_v2"),
+                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison"),
                         exit_if_file_exists=True,
                         export_png=True,
                         **common_configs
