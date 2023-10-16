@@ -25,9 +25,6 @@ def main():
     antithetic_shifts = np.linspace(0.0, 1.0, N)
     n_time_samples_list = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     heterodyne_frequencies = np.linspace(0.0, 1.0, N)
-
-    heterodyne_frequencies = [1.0]
-    heterodyne_offsets = [0.0]
     
     parser = configargparse.ArgumentParser()
     parser.add_argument('--config', is_config_file=True, help='config file path')
@@ -98,7 +95,7 @@ def main():
                         total_spp=scene_config.get("spp"),
                         time_sampling_method=time_sampling_method,
                         path_correlation_depth=path_correlation_depth,
-                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison"),
+                        base_dir=os.path.join(basedir, "results/time_spatial_sampling_comparison_v2"),
                         exit_if_file_exists=True,
                         export_png=True,
                         **common_configs
