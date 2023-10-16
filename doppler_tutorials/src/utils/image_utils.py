@@ -105,7 +105,7 @@ def save_speed_image(image, output_path, filename, colorbar_also=False,
 
 def save_tof_image(image, output_path, filename, 
     vmin_percentile=5, vmax_percentaile=95, 
-    vmin=None, vmax=None, colorbar_also=False, resize=1):
+    vmin=None, vmax=None, colorbar_also=False, resize=1, **kwargs):
     if colorbar_also:
         visualize_tof_image(image, vmin, vmax, vmin_percentile, vmax_percentaile)
         plt.colorbar()

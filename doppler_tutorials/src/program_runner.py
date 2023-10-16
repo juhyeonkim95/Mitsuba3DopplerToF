@@ -148,6 +148,6 @@ def run_scene_doppler_tof(
     np.save(output_file, img_dop)
 
     if kwargs.get("export_png", False):
-        save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % expname)
+        save_tof_image(to_tof_image(img_dop, kwargs.get("exposure_time", 0.0015)), output_path, "%s.png" % expname, **kwargs)
     
     return img_dop
