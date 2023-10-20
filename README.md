@@ -80,7 +80,7 @@ For scene formatting, we tried to be similar with Mitsuba0.6 version.
 cd configs_example
 mitsuba scene.xml -m cuda_rgb
 ```
-We also included exhaustive examples in `doppler_tutorials` folder at [here][https://github.com/juhyeonkim95/Mitsuba3DopplerToF/tree/main/doppler_tutorials].
+We also included exhaustive examples in `doppler_tutorials` folder at [here](https://github.com/juhyeonkim95/Mitsuba3DopplerToF/tree/main/doppler_tutorials).
 You can simulate various experiments in the main paper.
 
 ## Citation
