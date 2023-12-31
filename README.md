@@ -86,5 +86,14 @@ You can simulate various experiments in the main paper.
 ## Citation
 If you find this useful for your research, please consider to cite:
 ```
-(TBA)
+@article{kim2023doppler,
+  title={Doppler Time-of-Flight Rendering},
+  author={Kim, Juhyeon and Jarosz, Wojciech and Gkioulekas, Ioannis and Pediredla, Adithya},
+  journal={ACM Transactions on Graphics (TOG)},
+  volume={42},
+  number={6},
+  pages={1--18},
+  year={2023},
+  publisher={ACM New York, NY, USA}
+}
 ```
