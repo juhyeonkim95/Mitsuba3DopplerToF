@@ -10,7 +10,7 @@ Please also check Mitsuba0.6 implementation at [here](https://github.com/juhyeon
 
 ## Install
 To compile, follow the original Mitsuba3's compliation guide at [here](https://github.com/mitsuba-renderer/mitsuba3).
-Our implementation only works on CUDA, so make sure to include CUDA as a backend in `mistuba.conf`.
+Our implementation only works on CUDA and llvm, so make sure to include CUDA or llvm as a backend in `mistuba.conf`.
 We recommend to include `cuda_rgb` configuration.
 
 ## Parameter Explanation
