@@ -430,7 +430,8 @@ public:
      * the same value as \ref primitive_count().
      */
     virtual ScalarSize effective_primitive_count() const;
-
+    virtual void* get_shapegroup();
+    virtual SurfaceInteraction3f adjust_time(const SurfaceInteraction3f &si, Float time, Mask active = true) const;
 
 #if defined(MI_ENABLE_EMBREE)
     /// Return the Embree version of this shape
@@ -498,9 +499,6 @@ public:
                                    uint32_t /*instance_id*/,
                                    const ScalarTransform4f& /*transf*/,
                                    const ref<AnimatedTransform>& /*animated_transf*/);
-
-    virtual void* get_shapegroup();
-    virtual SurfaceInteraction3f adjust_time(const SurfaceInteraction3f &si, Float time, Mask active = true) const;
 
     /**
      * \brief Creates and appends the HitGroupSbtRecord(s) associated with this
