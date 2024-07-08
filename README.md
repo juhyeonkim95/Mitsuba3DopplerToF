@@ -13,6 +13,13 @@ To compile, follow the original Mitsuba3's compliation guide at [here](https://g
 Our implementation only works on CUDA and llvm, so make sure to include CUDA or llvm as a backend in `mistuba.conf`.
 We recommend to include `cuda_rgb` configuration.
 
+(20240707 added) If following error occurs, please refer to this link [here](https://github.com/juhyeonkim95/Mitsuba3DopplerToF/issues/13).
+```
+COMPILE ERROR: Invalid PTX input: ptx2llvm-module-001: error: Failed to parse input PTX string
+ptx2llvm-module-001, line 2; fatal   : Unsupported .target 'sm_87'
+Cannot parse input PTX string
+```
+
 ## Parameter Explanation
 New integrator named `dopplertofpath` is added for Doppler ToF rendering.
 Followings are explanation for each parameter.
